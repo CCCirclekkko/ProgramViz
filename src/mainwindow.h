@@ -15,12 +15,14 @@ class QMenu;
 class QToolButton;
 class TreeMapView;
 class AppearanceSettingsDialog;
+class QTemporaryDir;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
 
 public:
     explicit MainWindow(const QString &initialPath, QWidget *parent = nullptr);
+    ~MainWindow() override;
 
 private slots:
     void chooseProject();
@@ -34,6 +36,8 @@ private slots:
     void toggleAdaptiveWindow();
     void handleAdaptiveFitAvailable();
     void handleAdaptiveFitUnavailable(int requiredHeight);
+    void selectGitBranch(const QString &branch);
+    void selectGitRevision(const QString &revision);
     void applyAppearance();
     void updateRecentMenu();
 
@@ -45,6 +49,10 @@ private:
     bool effectiveDarkTheme() const;
     void updateDetails(ProjectNode *node);
     void scanPath(const QString &path);
+    QString gitOutput(const QStringList &arguments) const;
+    void refreshGitMetadata(const QString &path);
+    void updateGitMenus();
+    bool materializeGitRevision(const QString &revision, QString *snapshotPath);
     QString formatBytes(qint64 bytes) const;
     QString formatDate(const QDateTime &dateTime) const;
     ProjectNode *selectedNode() const;
@@ -55,6 +63,10 @@ private:
     QPushButton *m_scanButton = nullptr;
     QToolButton *m_recentButton = nullptr;
     QMenu *m_recentMenu = nullptr;
+    QPushButton *m_gitBranchButton = nullptr;
+    QPushButton *m_gitHistoryButton = nullptr;
+    QMenu *m_gitBranchMenu = nullptr;
+    QMenu *m_gitHistoryMenu = nullptr;
     QLabel *m_details = nullptr;
     QPushButton *m_finderButton = nullptr;
     QPushButton *m_vscodeButton = nullptr;
@@ -71,4 +83,8 @@ private:
     bool m_adaptiveResizeAttempted = false;
     QStringList m_recentProjects;
     QPointer<AppearanceSettingsDialog> m_appearanceDialog;
+    QString m_gitRoot;
+    QString m_gitBranch;
+    QString m_gitRevision;
+    std::unique_ptr<QTemporaryDir> m_gitSnapshot;
 };
