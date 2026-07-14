@@ -70,6 +70,20 @@ void TreeMapView::setVisualSettings(const VisualSettings &settings)
     update();
 }
 
+void TreeMapView::setAdaptiveWindow(bool enabled)
+{
+    if (m_adaptiveWindow == enabled)
+        return;
+    m_adaptiveWindow = enabled;
+    rebuildLayout();
+    update();
+}
+
+bool TreeMapView::adaptiveWindow() const
+{
+    return m_adaptiveWindow;
+}
+
 void TreeMapView::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
@@ -310,9 +324,42 @@ void TreeMapView::rebuildLayout()
             if (!node->collapsed)
                 pending.push_back(child.get());
     }
-    m_lineHeightScale = std::max(0.08,
-                                 (height() - 36.0) * 0.62
-                                     / static_cast<double>(std::max<qint64>(1, m_root->lines.code)));
+    int adaptiveRequiredHeight = 0;
+    if (m_adaptiveWindow) {
+        const double previousScale = m_lineHeightScale;
+        const double targetHeight = std::max(360, availableViewportHeight());
+        const auto contentHeightAt = [this](double scale) {
+            m_lineHeightScale = scale;
+            m_items.clear();
+            return layoutNode(m_root, 18.0) + 36.0;
+        };
+
+        const double minimumContentHeight = contentHeightAt(0.0);
+        if (minimumContentHeight <= targetHeight) {
+            double low = 0.0;
+            double high = std::max(m_fixedLineHeightScale, 0.2);
+            while (contentHeightAt(high) <= targetHeight && high < 16.0)
+                high *= 2.0;
+            for (int iteration = 0; iteration < 28; ++iteration) {
+                const double middle = (low + high) / 2.0;
+                if (contentHeightAt(middle) <= targetHeight)
+                    low = middle;
+                else
+                    high = middle;
+            }
+            m_lineHeightScale = low;
+        } else {
+            // Keep the previous scale when a new minimum-height constraint
+            // cannot fit, so expanding names never changes code proportions.
+            m_lineHeightScale = previousScale > 0.0 ? previousScale : m_fixedLineHeightScale;
+            adaptiveRequiredHeight = static_cast<int>(std::ceil(minimumContentHeight));
+        }
+    } else {
+        m_lineHeightScale = m_fixedLineHeightScale;
+    }
+    // Adaptive fitting measures the tree repeatedly. Start the real layout
+    // from an empty item list so measured rectangles cannot be painted again.
+    m_items.clear();
     const double subtreeHeight = layoutNode(m_root, 18.0);
 
     m_contentWidth = std::max(480.0, columnX(m_maxDepth) + m_columnWidths.last() + 18.0);
@@ -322,6 +369,14 @@ void TreeMapView::rebuildLayout()
     m_contentHeight = std::max(360.0, bottom + 18.0);
     setMinimumSize(static_cast<int>(std::ceil(m_contentWidth)),
                    static_cast<int>(std::ceil(m_contentHeight)));
+
+    if (m_adaptiveWindow) {
+        if (adaptiveRequiredHeight > 0)
+            emit adaptiveFitUnavailable(adaptiveRequiredHeight);
+        else
+            emit adaptiveFitAvailable();
+    }
+
 }
 
 double TreeMapView::layoutNode(ProjectNode *node, double top)
@@ -398,6 +453,11 @@ double TreeMapView::columnX(int depth) const
     for (int index = 0; index < depth && index < m_columnWidths.size(); ++index)
         x += m_columnWidths.at(index) + m_columnGap;
     return x;
+}
+
+int TreeMapView::availableViewportHeight() const
+{
+    return parentWidget() ? parentWidget()->height() : height();
 }
 
 QVector<TreeMapView::DisplayGroup> TreeMapView::displayGroups(ProjectNode *node) const

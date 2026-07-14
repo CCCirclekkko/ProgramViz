@@ -31,6 +31,9 @@ private slots:
     void openSelectedInVSCode();
     void openAppearanceSettings();
     void toggleNameExpansion();
+    void toggleAdaptiveWindow();
+    void handleAdaptiveFitAvailable();
+    void handleAdaptiveFitUnavailable(int requiredHeight);
     void applyAppearance();
     void updateRecentMenu();
 
@@ -57,11 +60,15 @@ private:
     QPushButton *m_vscodeButton = nullptr;
     QPushButton *m_nameExpansionButton = nullptr;
     QPushButton *m_appearanceButton = nullptr;
+    QPushButton *m_adaptiveButton = nullptr;
     TreeMapView *m_view = nullptr;
     ProjectNode *m_selected = nullptr;
     VisualSettings m_visualSettings;
     double m_userMinHeightRatio = 0.6;
     bool m_namesExpanded = false;
+    bool m_adaptiveWindow = false;
+    bool m_adaptiveRecoveryAllowed = false;
+    bool m_adaptiveResizeAttempted = false;
     QStringList m_recentProjects;
     QPointer<AppearanceSettingsDialog> m_appearanceDialog;
 };

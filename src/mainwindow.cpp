@@ -7,6 +7,7 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
+#include <QGuiApplication>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -16,6 +17,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QScreen>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSplitter>
@@ -78,6 +80,8 @@ void MainWindow::buildUi()
     m_recentButton->setPopupMode(QToolButton::InstantPopup);
     m_nameExpansionButton = new QPushButton(QStringLiteral("展开所有名称"), toolbar);
     m_nameExpansionButton->setToolTip(QStringLiteral("切换所有模块名称的最小显示高度"));
+    m_adaptiveButton = new QPushButton(QStringLiteral("适应窗口"), toolbar);
+    m_adaptiveButton->setToolTip(QStringLiteral("自动调整每行像素系数以适应窗口高度"));
     m_appearanceButton = new QPushButton(QStringLiteral("外观"), toolbar);
     m_appearanceButton->setToolTip(QStringLiteral("打开外观设置"));
     toolbarLayout->addWidget(pathLabel);
@@ -87,6 +91,7 @@ void MainWindow::buildUi()
     toolbarLayout->addWidget(m_scanButton);
     toolbarLayout->addSpacing(4);
     toolbarLayout->addWidget(m_nameExpansionButton);
+    toolbarLayout->addWidget(m_adaptiveButton);
     toolbarLayout->addWidget(m_appearanceButton);
 
     m_view = new TreeMapView(this);
@@ -139,6 +144,12 @@ void MainWindow::buildUi()
     connect(m_vscodeButton, &QPushButton::clicked, this, &MainWindow::openSelectedInVSCode);
     connect(m_nameExpansionButton, &QPushButton::clicked,
             this, &MainWindow::toggleNameExpansion);
+    connect(m_adaptiveButton, &QPushButton::clicked,
+            this, &MainWindow::toggleAdaptiveWindow);
+    connect(m_view, &TreeMapView::adaptiveFitUnavailable,
+            this, &MainWindow::handleAdaptiveFitUnavailable);
+    connect(m_view, &TreeMapView::adaptiveFitAvailable,
+            this, &MainWindow::handleAdaptiveFitAvailable);
     connect(m_appearanceButton, &QPushButton::clicked, this, &MainWindow::openAppearanceSettings);
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::updateRecentMenu);
     applyAppearance();
@@ -227,6 +238,15 @@ void MainWindow::applyAppearance()
                       .arg(m_visualSettings.fontSize)
                       .arg(panel, border, button, hover, secondary));
     m_view->setVisualSettings(m_visualSettings);
+    const QString activeButtonStyle = QStringLiteral(
+        "QPushButton { background: #d9f0df; color: #356043; border-color: #a8cfb1; }");
+    if (m_adaptiveButton) {
+        m_adaptiveButton->setStyleSheet(m_adaptiveWindow ? activeButtonStyle : QString());
+        m_adaptiveButton->setText(m_adaptiveWindow ? QStringLiteral("取消适应")
+                                                   : QStringLiteral("适应窗口"));
+    }
+    if (m_nameExpansionButton)
+        m_nameExpansionButton->setStyleSheet(m_namesExpanded ? activeButtonStyle : QString());
     m_details->setStyleSheet(QStringLiteral("QLabel { padding: 16px; color: %1; }").arg(foreground));
 }
 
@@ -278,10 +298,61 @@ void MainWindow::openAppearanceSettings()
 void MainWindow::toggleNameExpansion()
 {
     m_namesExpanded = !m_namesExpanded;
+    m_adaptiveRecoveryAllowed = false;
+    m_adaptiveResizeAttempted = false;
     m_visualSettings.minHeightRatio = m_namesExpanded ? 1.5 : m_userMinHeightRatio;
     m_nameExpansionButton->setText(m_namesExpanded ? QStringLiteral("取消展开名称")
                                                     : QStringLiteral("展开所有名称"));
     applyAppearance();
+}
+
+void MainWindow::toggleAdaptiveWindow()
+{
+    m_adaptiveWindow = !m_adaptiveWindow;
+    m_adaptiveRecoveryAllowed = m_adaptiveWindow;
+    m_adaptiveResizeAttempted = false;
+    if (!m_adaptiveWindow)
+        statusBar()->clearMessage();
+    m_view->setAdaptiveWindow(m_adaptiveWindow);
+    applyAppearance();
+}
+
+void MainWindow::handleAdaptiveFitUnavailable(int requiredHeight)
+{
+    if (!m_adaptiveWindow || m_adaptiveResizeAttempted)
+        return;
+
+    m_adaptiveResizeAttempted = true;
+    const int viewportHeight = m_view->parentWidget() ? m_view->parentWidget()->height()
+                                                       : m_view->height();
+    const int heightDelta = std::max(0, requiredHeight - viewportHeight);
+    const QScreen *screen = QGuiApplication::screenAt(frameGeometry().center());
+    const int screenHeight = screen ? screen->availableGeometry().height() : height() + heightDelta;
+    const int desiredHeight = std::min(screenHeight, height() + heightDelta + 24);
+    if (desiredHeight > height()) {
+        resize(width(), desiredHeight);
+        return;
+    }
+
+    if (m_adaptiveRecoveryAllowed && m_namesExpanded) {
+        m_namesExpanded = false;
+        m_visualSettings.minHeightRatio = m_userMinHeightRatio;
+        m_nameExpansionButton->setText(QStringLiteral("展开所有名称"));
+        m_adaptiveRecoveryAllowed = false;
+        m_adaptiveResizeAttempted = false;
+        applyAppearance();
+        return;
+    }
+
+    statusBar()->setStyleSheet(QStringLiteral("QStatusBar { color: #9a6700; }"));
+    statusBar()->showMessage(QStringLiteral("模块过多，无法完全自适应窗口，可滚动查看"));
+}
+
+void MainWindow::handleAdaptiveFitAvailable()
+{
+    m_adaptiveResizeAttempted = false;
+    if (m_adaptiveWindow)
+        statusBar()->setStyleSheet(QString());
 }
 
 void MainWindow::chooseProject()

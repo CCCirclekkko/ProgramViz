@@ -20,10 +20,14 @@ public:
     void setRoot(ProjectNode *root);
     ProjectNode *root() const;
     void setVisualSettings(const VisualSettings &settings);
+    void setAdaptiveWindow(bool enabled);
+    bool adaptiveWindow() const;
 
 signals:
     void nodeHovered(ProjectNode *node);
     void nodeSelected(ProjectNode *node);
+    void adaptiveFitAvailable();
+    void adaptiveFitUnavailable(int requiredHeight);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -61,6 +65,7 @@ private:
     double heightForCodeLines(qint64 codeLines) const;
     double widthForLabel(const QString &label) const;
     double columnX(int depth) const;
+    int availableViewportHeight() const;
 
     ProjectNode *m_root = nullptr;
     ProjectNode *m_hovered = nullptr;
@@ -74,6 +79,8 @@ private:
     QVector<double> m_columnWidths;
     double m_contentWidth = 480.0;
     double m_contentHeight = 360.0;
-    double m_lineHeightScale = 0.1;
+    double m_lineHeightScale = 0.2;
+    double m_fixedLineHeightScale = 0.2;
     double m_minBlockHeight = 48.0;
+    bool m_adaptiveWindow = false;
 };
