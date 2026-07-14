@@ -12,7 +12,6 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QMenu;
-class QSpinBox;
 class QToolButton;
 class TreeMapView;
 class AppearanceSettingsDialog;
@@ -31,6 +30,7 @@ private slots:
     void openSelectedInFinder();
     void openSelectedInVSCode();
     void openAppearanceSettings();
+    void toggleNameExpansion();
     void applyAppearance();
     void updateRecentMenu();
 
@@ -55,11 +55,13 @@ private:
     QLabel *m_details = nullptr;
     QPushButton *m_finderButton = nullptr;
     QPushButton *m_vscodeButton = nullptr;
-    QSpinBox *m_fontSizeSpin = nullptr;
+    QPushButton *m_nameExpansionButton = nullptr;
     QPushButton *m_appearanceButton = nullptr;
     TreeMapView *m_view = nullptr;
     ProjectNode *m_selected = nullptr;
     VisualSettings m_visualSettings;
+    double m_userMinHeightRatio = 0.6;
+    bool m_namesExpanded = false;
     QStringList m_recentProjects;
     QPointer<AppearanceSettingsDialog> m_appearanceDialog;
 };

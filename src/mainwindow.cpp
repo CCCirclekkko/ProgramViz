@@ -18,7 +18,6 @@
 #include <QProcess>
 #include <QScrollArea>
 #include <QSettings>
-#include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QToolButton>
@@ -77,11 +76,8 @@ void MainWindow::buildUi()
     m_recentButton->setToolTip(QStringLiteral("选择最近扫描的工程目录"));
     m_recentButton->setMenu(m_recentMenu);
     m_recentButton->setPopupMode(QToolButton::InstantPopup);
-    m_fontSizeSpin = new QSpinBox(toolbar);
-    m_fontSizeSpin->setRange(9, 24);
-    m_fontSizeSpin->setSuffix(QStringLiteral(" pt"));
-    m_fontSizeSpin->setValue(m_visualSettings.fontSize);
-    m_fontSizeSpin->setToolTip(QStringLiteral("节点文字字号"));
+    m_nameExpansionButton = new QPushButton(QStringLiteral("展开所有名称"), toolbar);
+    m_nameExpansionButton->setToolTip(QStringLiteral("切换所有模块名称的最小显示高度"));
     m_appearanceButton = new QPushButton(QStringLiteral("外观"), toolbar);
     m_appearanceButton->setToolTip(QStringLiteral("打开外观设置"));
     toolbarLayout->addWidget(pathLabel);
@@ -90,7 +86,7 @@ void MainWindow::buildUi()
     toolbarLayout->addWidget(browseButton);
     toolbarLayout->addWidget(m_scanButton);
     toolbarLayout->addSpacing(4);
-    toolbarLayout->addWidget(m_fontSizeSpin);
+    toolbarLayout->addWidget(m_nameExpansionButton);
     toolbarLayout->addWidget(m_appearanceButton);
 
     m_view = new TreeMapView(this);
@@ -141,11 +137,8 @@ void MainWindow::buildUi()
     connect(m_view, &TreeMapView::nodeHovered, this, &MainWindow::showHover);
     connect(m_finderButton, &QPushButton::clicked, this, &MainWindow::openSelectedInFinder);
     connect(m_vscodeButton, &QPushButton::clicked, this, &MainWindow::openSelectedInVSCode);
-    connect(m_fontSizeSpin, &QSpinBox::valueChanged, this, [this](int value) {
-        m_visualSettings.fontSize = value;
-        saveSettings();
-        applyAppearance();
-    });
+    connect(m_nameExpansionButton, &QPushButton::clicked,
+            this, &MainWindow::toggleNameExpansion);
     connect(m_appearanceButton, &QPushButton::clicked, this, &MainWindow::openAppearanceSettings);
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::updateRecentMenu);
     applyAppearance();
@@ -164,7 +157,7 @@ void MainWindow::loadSettings()
     m_visualSettings.hue = settings.value(QStringLiteral("appearance/hue"), 212).toInt();
     m_visualSettings.saturation = settings.value(QStringLiteral("appearance/saturation"), 46).toInt();
     m_visualSettings.intensity = settings.value(QStringLiteral("appearance/intensity"), 84).toInt();
-    m_visualSettings.minHeightRatio = settings.value(QStringLiteral("appearance/minHeightRatio"), 1.0).toDouble();
+    m_visualSettings.minHeightRatio = settings.value(QStringLiteral("appearance/minHeightRatio"), 0.6).toDouble();
     m_visualSettings.cornerRatio = settings.value(QStringLiteral("appearance/cornerRatio"), 1.0 / 6.0).toDouble();
     m_visualSettings.columnGap = settings.value(QStringLiteral("appearance/columnGap"), 10).toInt();
     m_visualSettings.siblingGap = settings.value(QStringLiteral("appearance/siblingGap"), 6).toInt();
@@ -174,6 +167,7 @@ void MainWindow::loadSettings()
     m_visualSettings.saturation = qBound(10, m_visualSettings.saturation, 100);
     m_visualSettings.intensity = qBound(35, m_visualSettings.intensity, 100);
     m_visualSettings.minHeightRatio = std::clamp(m_visualSettings.minHeightRatio, 0.01, 2.0);
+    m_userMinHeightRatio = m_visualSettings.minHeightRatio;
     m_visualSettings.cornerRatio = std::clamp(m_visualSettings.cornerRatio, 0.05, 0.30);
     m_visualSettings.columnGap = qBound(0, m_visualSettings.columnGap, 30);
     m_visualSettings.siblingGap = qBound(0, m_visualSettings.siblingGap, 20);
@@ -193,7 +187,7 @@ void MainWindow::saveSettings() const
     settings.setValue(QStringLiteral("appearance/hue"), m_visualSettings.hue);
     settings.setValue(QStringLiteral("appearance/saturation"), m_visualSettings.saturation);
     settings.setValue(QStringLiteral("appearance/intensity"), m_visualSettings.intensity);
-    settings.setValue(QStringLiteral("appearance/minHeightRatio"), m_visualSettings.minHeightRatio);
+    settings.setValue(QStringLiteral("appearance/minHeightRatio"), m_userMinHeightRatio);
     settings.setValue(QStringLiteral("appearance/cornerRatio"), m_visualSettings.cornerRatio);
     settings.setValue(QStringLiteral("appearance/columnGap"), m_visualSettings.columnGap);
     settings.setValue(QStringLiteral("appearance/siblingGap"), m_visualSettings.siblingGap);
@@ -245,32 +239,49 @@ void MainWindow::openAppearanceSettings()
     }
 
     const VisualSettings original = m_visualSettings;
-    auto *dialog = new AppearanceSettingsDialog(original, this);
+    const double originalUserMinHeightRatio = m_userMinHeightRatio;
+    VisualSettings dialogSettings = m_visualSettings;
+    dialogSettings.minHeightRatio = m_userMinHeightRatio;
+    auto *dialog = new AppearanceSettingsDialog(dialogSettings, this);
     m_appearanceDialog = dialog;
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setModal(false);
     dialog->setWindowModality(Qt::NonModal);
     connect(dialog, &AppearanceSettingsDialog::settingsChanged, this,
-            [this](const VisualSettings &preview) {
+            [this](VisualSettings preview) {
+                m_userMinHeightRatio = preview.minHeightRatio;
+                preview.minHeightRatio = m_namesExpanded ? 1.5 : m_userMinHeightRatio;
                 m_visualSettings = preview;
                 applyAppearance();
             });
-    connect(dialog, &QDialog::finished, this, [this, dialog, original](int result) {
+    connect(dialog, &QDialog::finished, this,
+            [this, dialog, original, originalUserMinHeightRatio](int result) {
         if (result == QDialog::Accepted) {
-            m_visualSettings = dialog->settings();
+            VisualSettings accepted = dialog->settings();
+            m_userMinHeightRatio = accepted.minHeightRatio;
+            accepted.minHeightRatio = m_namesExpanded ? 1.5 : m_userMinHeightRatio;
+            m_visualSettings = accepted;
             saveSettings();
             applyAppearance();
-            m_fontSizeSpin->setValue(m_visualSettings.fontSize);
         } else if (m_visualSettings.livePreview || dialog->livePreview()) {
             m_visualSettings = original;
+            m_userMinHeightRatio = originalUserMinHeightRatio;
             applyAppearance();
-            m_fontSizeSpin->setValue(m_visualSettings.fontSize);
         }
         m_appearanceDialog.clear();
     });
     dialog->show();
     dialog->raise();
     dialog->activateWindow();
+}
+
+void MainWindow::toggleNameExpansion()
+{
+    m_namesExpanded = !m_namesExpanded;
+    m_visualSettings.minHeightRatio = m_namesExpanded ? 1.5 : m_userMinHeightRatio;
+    m_nameExpansionButton->setText(m_namesExpanded ? QStringLiteral("取消展开名称")
+                                                    : QStringLiteral("展开所有名称"));
+    applyAppearance();
 }
 
 void MainWindow::chooseProject()

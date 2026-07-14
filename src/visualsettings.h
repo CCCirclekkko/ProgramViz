@@ -20,7 +20,7 @@ struct VisualSettings {
     int hue = 212;
     int saturation = 46;
     int intensity = 84;
-    double minHeightRatio = 1.0;
+    double minHeightRatio = 0.6;
     double cornerRatio = 1.0 / 6.0;
     int columnGap = 10;
     int siblingGap = 6;
