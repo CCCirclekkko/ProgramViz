@@ -128,14 +128,11 @@ void TreeMapView::paintEvent(QPaintEvent *)
             painter.setPen(QPen(isDarkTheme() ? QColor(255, 255, 255, 88)
                                               : QColor(37, 55, 82, 72),
                                   0.8));
-            double dividerX = nodeRect.left();
-            for (int memberIndex = 0; memberIndex < item.members.size() - 1; ++memberIndex) {
-                dividerX += nodeRect.width()
-                            * static_cast<double>(item.members.at(memberIndex)->weight())
-                            / static_cast<double>(item.displayWeight);
-                painter.drawLine(QPointF(dividerX, nodeRect.top() + 5),
-                                 QPointF(dividerX, nodeRect.bottom() - 5));
-            }
+            const double dividerX = nodeRect.left() + std::clamp(nodeRect.width() * 0.23,
+                                                                  44.0,
+                                                                  72.0);
+            painter.drawLine(QPointF(dividerX, nodeRect.top() + 5),
+                             QPointF(dividerX, nodeRect.bottom() - 5));
         }
 
         if (nodeRect.width() >= 58.0 && nodeRect.height() >= m_minBlockHeight - 4.0)
@@ -160,30 +157,22 @@ void TreeMapView::drawText(QPainter &painter, const LayoutItem &item, const QRec
             item.displayName, Qt::ElideRight, textWidth);
         painter.drawText(nameRect, Qt::AlignCenter, name);
     } else {
-        const int dividerPadding = 8;
-        int leftWidth = static_cast<int>(rect.width()
-                                         * static_cast<double>(item.members.front()->weight())
-                                         / static_cast<double>(item.displayWeight));
-        leftWidth = std::max(1, leftWidth - dividerPadding);
+        const double leftWidth = std::clamp(rect.width() * 0.23, 44.0, 72.0);
         const QString leftExtension = QStringLiteral(".%1")
                                           .arg(QFileInfo(item.members.front()->name).suffix());
-        const QString rightExtension = QStringLiteral(".%1")
-                                           .arg(QFileInfo(item.members.back()->name).suffix());
-        painter.drawText(QRectF(rect.left() + 4, nameRect.top(), leftWidth, nameRect.height()),
+        const QString rightName = QStringLiteral("%1.%2")
+                                      .arg(item.displayName,
+                                           QFileInfo(item.members.back()->name).suffix());
+        painter.drawText(QRectF(rect.left() + 4, rect.top() + 4, leftWidth - 8,
+                                rect.height() - 8),
                          Qt::AlignCenter,
-                         painter.fontMetrics().elidedText(leftExtension, Qt::ElideRight, leftWidth));
-        const double rightStart = rect.left()
-                                   + rect.width()
-                                         * static_cast<double>(item.members.front()->weight())
-                                         / static_cast<double>(item.displayWeight)
-                                   + dividerPadding / 2.0;
-        painter.drawText(QRectF(rightStart, nameRect.top(), rect.right() - rightStart - 4,
-                                nameRect.height()),
+                         painter.fontMetrics().elidedText(leftExtension, Qt::ElideRight,
+                                                          std::max(1, static_cast<int>(leftWidth - 8))));
+        const double rightStart = rect.left() + leftWidth;
+        const int rightWidth = std::max(1, static_cast<int>(rect.right() - rightStart - 12));
+        painter.drawText(QRectF(rightStart + 6, nameRect.top(), rightWidth, nameRect.height()),
                          Qt::AlignCenter,
-                         painter.fontMetrics().elidedText(rightExtension, Qt::ElideRight,
-                                                          std::max(1, static_cast<int>(rect.right()
-                                                                                       - rightStart
-                                                                                       - 4))));
+                         painter.fontMetrics().elidedText(rightName, Qt::ElideRight, rightWidth));
     }
 
     painter.setOpacity(0.82);
@@ -250,8 +239,11 @@ void TreeMapView::rebuildLayout()
         for (const auto &child : node->children)
             pending.push_back(child.get());
     }
-    m_minBlockHeight = std::max(44.0, metrics.height() * 2.5);
-    m_columnWidth = std::max(180.0, static_cast<double>(maxNameWidth + 30));
+    m_minBlockHeight = std::max(44.0, metrics.height() * 2.0 + 8.0);
+    m_columnWidth = std::max(210.0, static_cast<double>(maxNameWidth + 50));
+    m_lineHeightScale = std::max(0.08,
+                                 (height() - 36.0) * 0.62
+                                     / static_cast<double>(std::max<qint64>(1, m_root->lines.code)));
     const double subtreeHeight = layoutNode(m_root, 18.0, 18.0);
 
     m_contentWidth = std::max(480.0,
@@ -271,7 +263,7 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
         return 0.0;
 
     const QVector<DisplayGroup> groups = displayGroups(node);
-    const double nodeHeight = m_minBlockHeight;
+    const double nodeHeight = heightForCodeLines(node->lines.code);
     if (groups.isEmpty()) {
         m_items.push_back({node,
                            QRectF(x, top, m_columnWidth, nodeHeight),
@@ -291,7 +283,7 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
         ProjectNode *representative = group.members.front();
         const double groupHeight = group.members.size() == 1 && representative->isFolder()
                                        ? layoutNode(representative, childX, childTop)
-                                       : nodeHeight;
+                                       : heightForCodeLines(group.codeLines);
         if (group.members.size() != 1 || !representative->isFolder()) {
             m_items.push_back({representative,
                                QRectF(childX, childTop, m_columnWidth, groupHeight),
@@ -314,6 +306,12 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
                        node->lines.code,
                        node->weight()});
     return subtreeHeight;
+}
+
+double TreeMapView::heightForCodeLines(qint64 codeLines) const
+{
+    return std::max(m_minBlockHeight,
+                    static_cast<double>(std::max<qint64>(1, codeLines)) * m_lineHeightScale);
 }
 
 QVector<TreeMapView::DisplayGroup> TreeMapView::displayGroups(ProjectNode *node) const

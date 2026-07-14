@@ -57,6 +57,7 @@ private:
     QColor colorFor(const ProjectNode *node) const;
     bool isDarkTheme() const;
     void drawText(QPainter &painter, const LayoutItem &item, const QRectF &rect);
+    double heightForCodeLines(qint64 codeLines) const;
 
     ProjectNode *m_root = nullptr;
     ProjectNode *m_hovered = nullptr;
@@ -69,4 +70,5 @@ private:
     double m_minBlockHeight = 48.0;
     double m_contentWidth = 480.0;
     double m_contentHeight = 360.0;
+    double m_lineHeightScale = 0.1;
 };
