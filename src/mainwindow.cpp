@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QScrollArea>
 #include <QSettings>
 #include <QSpinBox>
 #include <QSplitter>
@@ -114,11 +115,16 @@ void MainWindow::buildUi()
     detailsLayout->addWidget(m_details, 1);
     detailsLayout->addLayout(actionLayout);
 
+    auto *viewScroll = new QScrollArea(this);
+    viewScroll->setFrameShape(QFrame::NoFrame);
+    viewScroll->setWidgetResizable(true);
+    viewScroll->setWidget(m_view);
+
     auto *splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->addWidget(m_view);
+    splitter->addWidget(viewScroll);
     splitter->addWidget(detailsPanel);
     splitter->setStretchFactor(0, 1);
-    splitter->setSizes({900, 320});
+    splitter->setSizes({980, 300});
 
     auto *central = new QWidget(this);
     auto *layout = new QVBoxLayout(central);
@@ -162,7 +168,7 @@ void MainWindow::loadSettings()
     m_visualSettings.colorScheme = static_cast<ColorScheme>(
         settings.value(QStringLiteral("appearance/colorScheme"),
                        static_cast<int>(ColorScheme::DifferentHueByLevel)).toInt());
-    m_visualSettings.fontSize = settings.value(QStringLiteral("appearance/fontSize"), 11).toInt();
+    m_visualSettings.fontSize = settings.value(QStringLiteral("appearance/fontSize"), 16).toInt();
     m_visualSettings.hue = settings.value(QStringLiteral("appearance/hue"), 212).toInt();
     m_visualSettings.saturation = settings.value(QStringLiteral("appearance/saturation"), 46).toInt();
     m_visualSettings.intensity = settings.value(QStringLiteral("appearance/intensity"), 84).toInt();

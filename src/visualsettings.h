@@ -16,7 +16,7 @@ enum class ColorScheme {
 struct VisualSettings {
     ThemeMode theme = ThemeMode::System;
     ColorScheme colorScheme = ColorScheme::DifferentHueByLevel;
-    int fontSize = 11;
+    int fontSize = 16;
     int hue = 212;
     int saturation = 46;
     int intensity = 84;
