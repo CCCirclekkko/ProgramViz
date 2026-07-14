@@ -56,6 +56,7 @@ private:
     ProjectNode *nodeAt(const QPointF &point) const;
     QColor colorFor(const ProjectNode *node) const;
     bool isDarkTheme() const;
+    bool isDescendantOf(const ProjectNode *node, const ProjectNode *ancestor) const;
     void drawText(QPainter &painter, const LayoutItem &item, const QRectF &rect);
     double heightForCodeLines(qint64 codeLines) const;
 
@@ -67,7 +68,7 @@ private:
     int m_maxDepth = 0;
     double m_columnWidth = 180.0;
     double m_columnGap = 18.0;
-    double m_minBlockHeight = 48.0;
+    double m_textHeight = 16.0;
     double m_contentWidth = 480.0;
     double m_contentHeight = 360.0;
     double m_lineHeightScale = 0.1;

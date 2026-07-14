@@ -108,19 +108,29 @@ void TreeMapView::paintEvent(QPaintEvent *)
     }
 
     for (const LayoutItem &item : std::as_const(m_items)) {
-        const bool active = item.node == m_hovered || item.node == m_selected;
+        const bool hasHover = m_hovered != nullptr;
+        const bool hoveredNode = item.node == m_hovered;
+        const bool hoveredChild = hasHover && isDescendantOf(item.node, m_hovered);
+        const bool selectedNode = !hasHover && item.node == m_selected;
+        const bool strongHighlight = hoveredNode || selectedNode;
+        const bool softHighlight = hoveredChild || (hasHover && item.node == m_selected);
         QRectF nodeRect = item.rect.adjusted(1.0, 1.0, -1.0, -1.0);
-        if (active)
+        if (strongHighlight)
             nodeRect = nodeRect.adjusted(-1.5, -1.5, 1.5, 1.5);
 
-        painter.setPen(QPen(active ? (isDarkTheme() ? QColor(QStringLiteral("#ffffff"))
-                                                    : QColor(QStringLiteral("#17243a")))
-                                  : (isDarkTheme() ? QColor(255, 255, 255, 42)
-                                                   : QColor(44, 62, 91, 44)),
-                        active ? 2.0 : 1.0));
+        const QColor strongPen = isDarkTheme() ? QColor(QStringLiteral("#ffffff"))
+                                               : QColor(QStringLiteral("#17243a"));
+        const QColor softPen = isDarkTheme() ? QColor(255, 255, 255, 68)
+                                             : QColor(44, 62, 91, 72);
+        const QColor normalPen = isDarkTheme() ? QColor(255, 255, 255, 42)
+                                               : QColor(44, 62, 91, 44);
+        painter.setPen(QPen(strongHighlight ? strongPen : (softHighlight ? softPen : normalPen),
+                            strongHighlight ? 2.0 : (softHighlight ? 1.2 : 1.0)));
         QColor fill = colorFor(item.node);
-        if (active)
+        if (strongHighlight)
             fill = fill.lighter(114);
+        else if (softHighlight)
+            fill = fill.lighter(106);
         painter.setBrush(fill);
         painter.drawRoundedRect(nodeRect, 8.0, 8.0);
 
@@ -135,7 +145,7 @@ void TreeMapView::paintEvent(QPaintEvent *)
                              QPointF(dividerX, nodeRect.bottom() - 5));
         }
 
-        if (nodeRect.width() >= 58.0 && nodeRect.height() >= m_minBlockHeight - 4.0)
+        if (nodeRect.width() >= 58.0 && nodeRect.height() >= m_textHeight)
             drawText(painter, item, nodeRect);
     }
 }
@@ -157,6 +167,14 @@ void TreeMapView::drawText(QPainter &painter, const LayoutItem &item, const QRec
                               QFont rowNameFont,
                               QFont rowLineFont) {
         const QFontMetrics nameMetrics(rowNameFont);
+        if (area.height() < m_textHeight * 2.0) {
+            painter.setPen(textColor);
+            painter.setFont(rowNameFont);
+            painter.drawText(area.adjusted(4, 0, -4, 0), Qt::AlignCenter,
+                             nameMetrics.elidedText(name, Qt::ElideRight,
+                                                    std::max(1, static_cast<int>(area.width() - 8))));
+            return;
+        }
         const QFontMetrics lineMetrics(rowLineFont);
         const double rowHeight = std::max(nameMetrics.height(), lineMetrics.height());
         const double pairHeight = rowHeight * 2.0 + rowGap;
@@ -191,7 +209,7 @@ void TreeMapView::drawText(QPainter &painter, const LayoutItem &item, const QRec
     const QString sourceName = QStringLiteral("%1.%2")
                                    .arg(item.displayName, QFileInfo(source->name).suffix());
     QFont leftNameFont = nameFont;
-    leftNameFont.setPointSize(std::max(11, m_settings.fontSize - 4));
+    leftNameFont.setPointSize(m_settings.fontSize);
     QFont leftLineFont = leftNameFont;
     leftLineFont.setPointSize(std::max(10, m_settings.fontSize - 6));
     drawRows(leftArea, headerExtension, header->lines.code, leftNameFont, leftLineFont);
@@ -256,7 +274,7 @@ void TreeMapView::rebuildLayout()
         for (const auto &child : node->children)
             pending.push_back(child.get());
     }
-    m_minBlockHeight = std::max(44.0, metrics.height() * 2.0 + 8.0);
+    m_textHeight = metrics.height();
     m_columnWidth = std::max(210.0, static_cast<double>(maxNameWidth + 50));
     m_lineHeightScale = std::max(0.08,
                                  (height() - 36.0) * 0.62
@@ -327,7 +345,7 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
 
 double TreeMapView::heightForCodeLines(qint64 codeLines) const
 {
-    return std::max(m_minBlockHeight,
+    return std::max(1.0,
                     static_cast<double>(std::max<qint64>(1, codeLines)) * m_lineHeightScale);
 }
 
@@ -392,6 +410,17 @@ QColor TreeMapView::colorFor(const ProjectNode *node) const
     const int intensity = std::clamp(m_settings.intensity - (isDarkTheme() ? depth * 2 : depth * 3),
                                      36, 96);
     return colorFromHsi(hue, saturation, intensity);
+}
+
+bool TreeMapView::isDescendantOf(const ProjectNode *node, const ProjectNode *ancestor) const
+{
+    if (!node || !ancestor || node == ancestor)
+        return false;
+    for (ProjectNode *parent = node->parent; parent; parent = parent->parent) {
+        if (parent == ancestor)
+            return true;
+    }
+    return false;
 }
 
 bool TreeMapView::isDarkTheme() const
