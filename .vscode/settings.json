@@ -1,0 +1,19 @@
+{
+  "cmake.cmakePath": "/usr/local/bin/cmake",
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+  "cmake.configureOnEdit": false,
+  "cmake.buildBeforeRun": true,
+  "cmake.clearOutputBeforeBuild": true,
+  "cmake.options.statusBarVisibility": "visible",
+  "cmake.revealLog": "onError",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
+  "files.associations": {
+    "*.ui": "xml",
+    "*.qrc": "xml"
+  },
+  "terminal.integrated.env.osx": {
+    "PATH": "/opt/homebrew/bin:${env:PATH}"
+  }
+}

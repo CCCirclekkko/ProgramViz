@@ -1,0 +1,48 @@
+#pragma once
+
+#include "projectmodel.h"
+
+#include <QRectF>
+#include <QVector>
+#include <QWidget>
+
+class TreeMapView final : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit TreeMapView(QWidget *parent = nullptr);
+
+    void setRoot(ProjectNode *root);
+    ProjectNode *root() const;
+
+signals:
+    void nodeHovered(ProjectNode *node);
+    void nodeSelected(ProjectNode *node);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+
+private:
+    struct LayoutItem {
+        ProjectNode *node = nullptr;
+        QRectF rect;
+    };
+
+    void rebuildLayout();
+    void layoutNode(ProjectNode *node, double x, double width);
+    ProjectNode *nodeAt(const QPointF &point) const;
+    QColor colorFor(const ProjectNode *node) const;
+    QString labelFor(const ProjectNode *node) const;
+
+    ProjectNode *m_root = nullptr;
+    ProjectNode *m_hovered = nullptr;
+    ProjectNode *m_selected = nullptr;
+    QVector<LayoutItem> m_items;
+    int m_maxDepth = 0;
+    double m_rowHeight = 28.0;
+    double m_rowGap = 9.0;
+};

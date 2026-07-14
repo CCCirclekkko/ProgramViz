@@ -1,0 +1,7 @@
+/build/
+/cmake-build-*/
+CMakeUserPresets.json
+CMakeLists.txt.user*
+.DS_Store
+*.app.dSYM/
+.idea/
