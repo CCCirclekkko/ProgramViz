@@ -142,43 +142,60 @@ void TreeMapView::paintEvent(QPaintEvent *)
 
 void TreeMapView::drawText(QPainter &painter, const LayoutItem &item, const QRectF &rect)
 {
-    painter.setPen(isDarkTheme() ? QColor(QStringLiteral("#f8fafc"))
-                                 : QColor(QStringLiteral("#18263c")));
-    QFont font = painter.font();
-    font.setPointSize(m_settings.fontSize);
-    font.setBold(item.node->kind != ProjectNodeKind::File);
-    painter.setFont(font);
+    const QColor textColor = isDarkTheme() ? QColor(QStringLiteral("#f8fafc"))
+                                           : QColor(QStringLiteral("#18263c"));
+    QFont nameFont = painter.font();
+    nameFont.setPointSize(m_settings.fontSize);
+    nameFont.setBold(item.node->kind != ProjectNodeKind::File);
+    QFont lineFont = nameFont;
+    lineFont.setBold(false);
+    const int rowGap = 2;
 
-    const QRectF nameRect = rect.adjusted(9, 6, -9, -rect.height() / 2.0);
-    const QRectF linesRect = rect.adjusted(9, rect.height() / 2.0, -9, -6);
-    const int textWidth = std::max(1, static_cast<int>(rect.width() - 18));
+    const auto drawRows = [&](const QRectF &area,
+                              const QString &name,
+                              qint64 codeLines,
+                              QFont rowNameFont,
+                              QFont rowLineFont) {
+        const QFontMetrics nameMetrics(rowNameFont);
+        const QFontMetrics lineMetrics(rowLineFont);
+        const double rowHeight = std::max(nameMetrics.height(), lineMetrics.height());
+        const double pairHeight = rowHeight * 2.0 + rowGap;
+        const double top = area.center().y() - pairHeight / 2.0;
+        const QRectF nameArea(area.left() + 4, top, area.width() - 8, rowHeight);
+        const QRectF linesArea(area.left() + 4, top + rowHeight + rowGap,
+                               area.width() - 8, rowHeight);
+        painter.setPen(textColor);
+        painter.setFont(rowNameFont);
+        painter.drawText(nameArea, Qt::AlignCenter,
+                         nameMetrics.elidedText(name, Qt::ElideRight,
+                                                std::max(1, static_cast<int>(nameArea.width()))));
+        painter.setFont(rowLineFont);
+        painter.setOpacity(0.82);
+        painter.drawText(linesArea, Qt::AlignCenter,
+                         QStringLiteral("%1 行").arg(codeLines));
+        painter.setOpacity(1.0);
+    };
+
     if (item.members.size() == 1) {
-        const QString name = painter.fontMetrics().elidedText(
-            item.displayName, Qt::ElideRight, textWidth);
-        painter.drawText(nameRect, Qt::AlignCenter, name);
-    } else {
-        const double leftWidth = std::clamp(rect.width() * 0.23, 44.0, 72.0);
-        const QString leftExtension = QStringLiteral(".%1")
-                                          .arg(QFileInfo(item.members.front()->name).suffix());
-        const QString rightName = QStringLiteral("%1.%2")
-                                      .arg(item.displayName,
-                                           QFileInfo(item.members.back()->name).suffix());
-        painter.drawText(QRectF(rect.left() + 4, rect.top() + 4, leftWidth - 8,
-                                rect.height() - 8),
-                         Qt::AlignCenter,
-                         painter.fontMetrics().elidedText(leftExtension, Qt::ElideRight,
-                                                          std::max(1, static_cast<int>(leftWidth - 8))));
-        const double rightStart = rect.left() + leftWidth;
-        const int rightWidth = std::max(1, static_cast<int>(rect.right() - rightStart - 12));
-        painter.drawText(QRectF(rightStart + 6, nameRect.top(), rightWidth, nameRect.height()),
-                         Qt::AlignCenter,
-                         painter.fontMetrics().elidedText(rightName, Qt::ElideRight, rightWidth));
+        drawRows(rect, item.displayName, item.displayCodeLines, nameFont, lineFont);
+        return;
     }
 
-    painter.setOpacity(0.82);
-    painter.drawText(linesRect, Qt::AlignCenter,
-                     QStringLiteral("%1 行").arg(item.displayCodeLines));
-    painter.setOpacity(1.0);
+    const double leftWidth = std::clamp(rect.width() * 0.115, 36.0, 44.0);
+    const QRectF leftArea(rect.left(), rect.top(), leftWidth, rect.height());
+    const QRectF rightArea(rect.left() + leftWidth, rect.top(),
+                           rect.width() - leftWidth, rect.height());
+    const ProjectNode *header = item.members.front();
+    const ProjectNode *source = item.members.back();
+    const QString headerExtension = QStringLiteral(".%1").arg(QFileInfo(header->name).suffix());
+    const QString sourceName = QStringLiteral("%1.%2")
+                                   .arg(item.displayName, QFileInfo(source->name).suffix());
+    QFont leftNameFont = nameFont;
+    leftNameFont.setPointSize(std::max(11, m_settings.fontSize - 4));
+    QFont leftLineFont = leftNameFont;
+    leftLineFont.setPointSize(std::max(10, m_settings.fontSize - 6));
+    drawRows(leftArea, headerExtension, header->lines.code, leftNameFont, leftLineFont);
+    drawRows(rightArea, sourceName, source->lines.code, nameFont, lineFont);
 }
 
 void TreeMapView::mouseMoveEvent(QMouseEvent *event)
@@ -274,7 +291,7 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
         return nodeHeight;
     }
 
-    constexpr double siblingGap = 10.0;
+    constexpr double siblingGap = 6.0;
     const double childX = x + m_columnWidth + m_columnGap;
     double childTop = top;
     double subtreeHeight = 0.0;
@@ -298,9 +315,9 @@ double TreeMapView::layoutNode(ProjectNode *node, double x, double top)
         subtreeHeight = childTop - top;
     }
 
-    const double nodeTop = top + std::max(0.0, (subtreeHeight - nodeHeight) / 2.0);
+    const double nodeTop = top;
     m_items.push_back({node,
-                       QRectF(x, nodeTop, m_columnWidth, nodeHeight),
+                       QRectF(x, nodeTop, m_columnWidth, subtreeHeight),
                        {node},
                        node->name,
                        node->lines.code,
