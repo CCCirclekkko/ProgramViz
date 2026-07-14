@@ -33,6 +33,7 @@ struct ProjectNode {
     std::vector<std::unique_ptr<ProjectNode>> children;
 
     int depth = 0;
+    bool collapsed = false;
     qint64 weight() const;
     bool isFolder() const;
     int fileCount() const;

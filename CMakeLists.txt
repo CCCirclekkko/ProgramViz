@@ -17,6 +17,8 @@ qt_add_executable(ProgramViz MACOSX_BUNDLE
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h
+    src/appearancesettingsdialog.cpp
+    src/appearancesettingsdialog.h
     src/hsipalettedialog.cpp
     src/hsipalettedialog.h
     src/projectmodel.cpp

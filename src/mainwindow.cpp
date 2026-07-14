@@ -1,11 +1,10 @@
 #include "mainwindow.h"
 
-#include "hsipalettedialog.h"
+#include "appearancesettingsdialog.h"
 #include "treemapview.h"
 
 #include <QApplication>
 #include <QClipboard>
-#include <QComboBox>
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
@@ -13,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
@@ -21,10 +21,14 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
 #include <QDesktopServices>
+
+#include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -66,32 +70,28 @@ void MainWindow::buildUi()
     m_pathEdit->setPlaceholderText(QStringLiteral("选择工程根目录，默认扫描当前目录"));
     m_pathEdit->setText(m_projectPath);
     auto *browseButton = new QPushButton(QStringLiteral("选择"), toolbar);
-    m_scanButton = new QPushButton(QStringLiteral("扫描"), toolbar);
-    m_themeCombo = new QComboBox(toolbar);
-    m_themeCombo->addItem(QStringLiteral("跟随系统"), static_cast<int>(ThemeMode::System));
-    m_themeCombo->addItem(QStringLiteral("浅色模式"), static_cast<int>(ThemeMode::Light));
-    m_themeCombo->addItem(QStringLiteral("深色模式"), static_cast<int>(ThemeMode::Dark));
-    m_themeCombo->setCurrentIndex(m_themeCombo->findData(static_cast<int>(m_visualSettings.theme)));
-    m_schemeCombo = new QComboBox(toolbar);
-    m_schemeCombo->addItem(QStringLiteral("同级同色"), static_cast<int>(ColorScheme::SameHueByLevel));
-    m_schemeCombo->addItem(QStringLiteral("逐级不同色系"), static_cast<int>(ColorScheme::DifferentHueByLevel));
-    m_schemeCombo->setCurrentIndex(
-        m_schemeCombo->findData(static_cast<int>(m_visualSettings.colorScheme)));
+    m_scanButton = new QPushButton(QStringLiteral("刷新"), toolbar);
+    m_recentMenu = new QMenu(this);
+    m_recentButton = new QToolButton(toolbar);
+    m_recentButton->setArrowType(Qt::DownArrow);
+    m_recentButton->setToolTip(QStringLiteral("选择最近扫描的工程目录"));
+    m_recentButton->setMenu(m_recentMenu);
+    m_recentButton->setPopupMode(QToolButton::InstantPopup);
     m_fontSizeSpin = new QSpinBox(toolbar);
     m_fontSizeSpin->setRange(9, 24);
     m_fontSizeSpin->setSuffix(QStringLiteral(" pt"));
     m_fontSizeSpin->setValue(m_visualSettings.fontSize);
     m_fontSizeSpin->setToolTip(QStringLiteral("节点文字字号"));
-    m_paletteButton = new QPushButton(QStringLiteral("HSI 配色"), toolbar);
+    m_appearanceButton = new QPushButton(QStringLiteral("外观"), toolbar);
+    m_appearanceButton->setToolTip(QStringLiteral("打开外观设置"));
     toolbarLayout->addWidget(pathLabel);
     toolbarLayout->addWidget(m_pathEdit, 1);
+    toolbarLayout->addWidget(m_recentButton);
     toolbarLayout->addWidget(browseButton);
     toolbarLayout->addWidget(m_scanButton);
     toolbarLayout->addSpacing(4);
-    toolbarLayout->addWidget(m_themeCombo);
-    toolbarLayout->addWidget(m_schemeCombo);
     toolbarLayout->addWidget(m_fontSizeSpin);
-    toolbarLayout->addWidget(m_paletteButton);
+    toolbarLayout->addWidget(m_appearanceButton);
 
     m_view = new TreeMapView(this);
     m_details = new QLabel(this);
@@ -141,23 +141,15 @@ void MainWindow::buildUi()
     connect(m_view, &TreeMapView::nodeHovered, this, &MainWindow::showHover);
     connect(m_finderButton, &QPushButton::clicked, this, &MainWindow::openSelectedInFinder);
     connect(m_vscodeButton, &QPushButton::clicked, this, &MainWindow::openSelectedInVSCode);
-    connect(m_themeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
-        m_visualSettings.theme = static_cast<ThemeMode>(m_themeCombo->itemData(index).toInt());
-        saveSettings();
-        applyAppearance();
-    });
-    connect(m_schemeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
-        m_visualSettings.colorScheme = static_cast<ColorScheme>(m_schemeCombo->itemData(index).toInt());
-        saveSettings();
-        applyAppearance();
-    });
     connect(m_fontSizeSpin, &QSpinBox::valueChanged, this, [this](int value) {
         m_visualSettings.fontSize = value;
         saveSettings();
         applyAppearance();
     });
-    connect(m_paletteButton, &QPushButton::clicked, this, &MainWindow::openPaletteDialog);
+    connect(m_appearanceButton, &QPushButton::clicked, this, &MainWindow::openAppearanceSettings);
+    connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::updateRecentMenu);
     applyAppearance();
+    updateRecentMenu();
 }
 
 void MainWindow::loadSettings()
@@ -172,10 +164,23 @@ void MainWindow::loadSettings()
     m_visualSettings.hue = settings.value(QStringLiteral("appearance/hue"), 212).toInt();
     m_visualSettings.saturation = settings.value(QStringLiteral("appearance/saturation"), 46).toInt();
     m_visualSettings.intensity = settings.value(QStringLiteral("appearance/intensity"), 84).toInt();
+    m_visualSettings.minHeightRatio = settings.value(QStringLiteral("appearance/minHeightRatio"), 1.0).toDouble();
+    m_visualSettings.cornerRatio = settings.value(QStringLiteral("appearance/cornerRatio"), 1.0 / 6.0).toDouble();
+    m_visualSettings.columnGap = settings.value(QStringLiteral("appearance/columnGap"), 10).toInt();
+    m_visualSettings.siblingGap = settings.value(QStringLiteral("appearance/siblingGap"), 6).toInt();
+    m_visualSettings.livePreview = settings.value(QStringLiteral("appearance/livePreview"), true).toBool();
     m_visualSettings.fontSize = qBound(9, m_visualSettings.fontSize, 24);
     m_visualSettings.hue = (m_visualSettings.hue % 360 + 360) % 360;
     m_visualSettings.saturation = qBound(10, m_visualSettings.saturation, 100);
     m_visualSettings.intensity = qBound(35, m_visualSettings.intensity, 100);
+    m_visualSettings.minHeightRatio = std::clamp(m_visualSettings.minHeightRatio, 0.01, 2.0);
+    m_visualSettings.cornerRatio = std::clamp(m_visualSettings.cornerRatio, 0.05, 0.30);
+    m_visualSettings.columnGap = qBound(0, m_visualSettings.columnGap, 30);
+    m_visualSettings.siblingGap = qBound(0, m_visualSettings.siblingGap, 20);
+    m_recentProjects = settings.value(QStringLiteral("recentProjects")).toStringList();
+    m_recentProjects.erase(std::remove_if(m_recentProjects.begin(), m_recentProjects.end(),
+                                          [](const QString &path) { return !QDir(path).exists(); }),
+                           m_recentProjects.end());
 }
 
 void MainWindow::saveSettings() const
@@ -188,6 +193,11 @@ void MainWindow::saveSettings() const
     settings.setValue(QStringLiteral("appearance/hue"), m_visualSettings.hue);
     settings.setValue(QStringLiteral("appearance/saturation"), m_visualSettings.saturation);
     settings.setValue(QStringLiteral("appearance/intensity"), m_visualSettings.intensity);
+    settings.setValue(QStringLiteral("appearance/minHeightRatio"), m_visualSettings.minHeightRatio);
+    settings.setValue(QStringLiteral("appearance/cornerRatio"), m_visualSettings.cornerRatio);
+    settings.setValue(QStringLiteral("appearance/columnGap"), m_visualSettings.columnGap);
+    settings.setValue(QStringLiteral("appearance/siblingGap"), m_visualSettings.siblingGap);
+    settings.setValue(QStringLiteral("appearance/livePreview"), m_visualSettings.livePreview);
 }
 
 bool MainWindow::effectiveDarkTheme() const
@@ -226,19 +236,41 @@ void MainWindow::applyAppearance()
     m_details->setStyleSheet(QStringLiteral("QLabel { padding: 16px; color: %1; }").arg(foreground));
 }
 
-void MainWindow::openPaletteDialog()
+void MainWindow::openAppearanceSettings()
 {
-    HsiPaletteDialog dialog(m_visualSettings.hue,
-                            m_visualSettings.saturation,
-                            m_visualSettings.intensity,
-                            this);
-    if (dialog.exec() != QDialog::Accepted)
+    if (m_appearanceDialog) {
+        m_appearanceDialog->raise();
+        m_appearanceDialog->activateWindow();
         return;
-    m_visualSettings.hue = dialog.hue();
-    m_visualSettings.saturation = dialog.saturation();
-    m_visualSettings.intensity = dialog.intensity();
-    saveSettings();
-    applyAppearance();
+    }
+
+    const VisualSettings original = m_visualSettings;
+    auto *dialog = new AppearanceSettingsDialog(original, this);
+    m_appearanceDialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setModal(false);
+    dialog->setWindowModality(Qt::NonModal);
+    connect(dialog, &AppearanceSettingsDialog::settingsChanged, this,
+            [this](const VisualSettings &preview) {
+                m_visualSettings = preview;
+                applyAppearance();
+            });
+    connect(dialog, &QDialog::finished, this, [this, dialog, original](int result) {
+        if (result == QDialog::Accepted) {
+            m_visualSettings = dialog->settings();
+            saveSettings();
+            applyAppearance();
+            m_fontSizeSpin->setValue(m_visualSettings.fontSize);
+        } else if (m_visualSettings.livePreview || dialog->livePreview()) {
+            m_visualSettings = original;
+            applyAppearance();
+            m_fontSizeSpin->setValue(m_visualSettings.fontSize);
+        }
+        m_appearanceDialog.clear();
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void MainWindow::chooseProject()
@@ -265,6 +297,7 @@ void MainWindow::scanPath(const QString &path)
     }
 
     m_projectPath = info.absoluteFilePath();
+    addRecentProject(m_projectPath);
     m_pathEdit->setText(m_projectPath);
     m_scanButton->setEnabled(false);
     statusBar()->showMessage(QStringLiteral("正在扫描 %1 …").arg(m_projectPath));
@@ -282,6 +315,38 @@ void MainWindow::scanPath(const QString &path)
     statusBar()->showMessage(QStringLiteral("扫描完成：%1 个文件，%2 行代码")
                                  .arg(m_project->fileCount())
                                  .arg(m_project->lines.code));
+}
+
+void MainWindow::addRecentProject(const QString &path)
+{
+    m_recentProjects.removeAll(path);
+    m_recentProjects.prepend(path);
+    while (m_recentProjects.size() > 12)
+        m_recentProjects.removeLast();
+    QSettings settings;
+    settings.setValue(QStringLiteral("recentProjects"), m_recentProjects);
+    updateRecentMenu();
+}
+
+void MainWindow::updateRecentMenu()
+{
+    if (!m_recentMenu)
+        return;
+    m_recentMenu->clear();
+    if (m_recentProjects.isEmpty()) {
+        QAction *emptyAction = m_recentMenu->addAction(QStringLiteral("暂无最近工程"));
+        emptyAction->setEnabled(false);
+        return;
+    }
+    for (const QString &path : std::as_const(m_recentProjects)) {
+        const QFileInfo info(path);
+        QAction *action = m_recentMenu->addAction(info.fileName().isEmpty() ? path : info.fileName());
+        action->setToolTip(path);
+        connect(action, &QAction::triggered, this, [this, path]() {
+            m_pathEdit->setText(path);
+            scanPath(path);
+        });
+    }
 }
 
 void MainWindow::showNode(ProjectNode *node)

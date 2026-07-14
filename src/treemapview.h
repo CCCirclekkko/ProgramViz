@@ -51,7 +51,7 @@ private:
     };
 
     void rebuildLayout();
-    double layoutNode(ProjectNode *node, double x, double top);
+    double layoutNode(ProjectNode *node, double top);
     QVector<DisplayGroup> displayGroups(ProjectNode *node) const;
     ProjectNode *nodeAt(const QPointF &point) const;
     QColor colorFor(const ProjectNode *node) const;
@@ -59,6 +59,8 @@ private:
     bool isDescendantOf(const ProjectNode *node, const ProjectNode *ancestor) const;
     void drawText(QPainter &painter, const LayoutItem &item, const QRectF &rect);
     double heightForCodeLines(qint64 codeLines) const;
+    double widthForLabel(const QString &label) const;
+    double columnX(int depth) const;
 
     ProjectNode *m_root = nullptr;
     ProjectNode *m_hovered = nullptr;
@@ -66,10 +68,12 @@ private:
     QVector<LayoutItem> m_items;
     VisualSettings m_settings;
     int m_maxDepth = 0;
-    double m_columnWidth = 180.0;
-    double m_columnGap = 18.0;
+    double m_columnGap = 10.0;
     double m_textHeight = 16.0;
+    double m_minModuleWidth = 6.0;
+    QVector<double> m_columnWidths;
     double m_contentWidth = 480.0;
     double m_contentHeight = 360.0;
     double m_lineHeightScale = 0.1;
+    double m_minBlockHeight = 48.0;
 };

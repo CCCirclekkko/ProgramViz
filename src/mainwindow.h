@@ -4,15 +4,18 @@
 #include "visualsettings.h"
 
 #include <QMainWindow>
+#include <QPointer>
 
 #include <memory>
 
 class QLabel;
 class QLineEdit;
 class QPushButton;
-class QComboBox;
+class QMenu;
 class QSpinBox;
+class QToolButton;
 class TreeMapView;
+class AppearanceSettingsDialog;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -27,13 +30,15 @@ private slots:
     void showHover(ProjectNode *node);
     void openSelectedInFinder();
     void openSelectedInVSCode();
-    void openPaletteDialog();
+    void openAppearanceSettings();
     void applyAppearance();
+    void updateRecentMenu();
 
 private:
     void buildUi();
     void loadSettings();
     void saveSettings() const;
+    void addRecentProject(const QString &path);
     bool effectiveDarkTheme() const;
     void updateDetails(ProjectNode *node);
     void scanPath(const QString &path);
@@ -45,14 +50,16 @@ private:
     std::unique_ptr<ProjectNode> m_project;
     QLineEdit *m_pathEdit = nullptr;
     QPushButton *m_scanButton = nullptr;
+    QToolButton *m_recentButton = nullptr;
+    QMenu *m_recentMenu = nullptr;
     QLabel *m_details = nullptr;
     QPushButton *m_finderButton = nullptr;
     QPushButton *m_vscodeButton = nullptr;
-    QComboBox *m_themeCombo = nullptr;
-    QComboBox *m_schemeCombo = nullptr;
     QSpinBox *m_fontSizeSpin = nullptr;
-    QPushButton *m_paletteButton = nullptr;
+    QPushButton *m_appearanceButton = nullptr;
     TreeMapView *m_view = nullptr;
     ProjectNode *m_selected = nullptr;
     VisualSettings m_visualSettings;
+    QStringList m_recentProjects;
+    QPointer<AppearanceSettingsDialog> m_appearanceDialog;
 };
