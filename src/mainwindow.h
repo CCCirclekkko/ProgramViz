@@ -1,6 +1,7 @@
 #pragma once
 
 #include "projectmodel.h"
+#include "visualsettings.h"
 
 #include <QMainWindow>
 
@@ -9,6 +10,8 @@
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QComboBox;
+class QSpinBox;
 class TreeMapView;
 
 class MainWindow final : public QMainWindow {
@@ -24,9 +27,14 @@ private slots:
     void showHover(ProjectNode *node);
     void openSelectedInFinder();
     void openSelectedInVSCode();
+    void openPaletteDialog();
+    void applyAppearance();
 
 private:
     void buildUi();
+    void loadSettings();
+    void saveSettings() const;
+    bool effectiveDarkTheme() const;
     void updateDetails(ProjectNode *node);
     void scanPath(const QString &path);
     QString formatBytes(qint64 bytes) const;
@@ -40,6 +48,11 @@ private:
     QLabel *m_details = nullptr;
     QPushButton *m_finderButton = nullptr;
     QPushButton *m_vscodeButton = nullptr;
+    QComboBox *m_themeCombo = nullptr;
+    QComboBox *m_schemeCombo = nullptr;
+    QSpinBox *m_fontSizeSpin = nullptr;
+    QPushButton *m_paletteButton = nullptr;
     TreeMapView *m_view = nullptr;
     ProjectNode *m_selected = nullptr;
+    VisualSettings m_visualSettings;
 };

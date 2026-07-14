@@ -1,9 +1,11 @@
 #include "mainwindow.h"
 
+#include "hsipalettedialog.h"
 #include "treemapview.h"
 
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
@@ -14,6 +16,8 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QSettings>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QUrl>
@@ -44,6 +48,7 @@ MainWindow::MainWindow(const QString &initialPath, QWidget *parent)
 {
     setWindowTitle(QStringLiteral("ProgramViz"));
     resize(1280, 760);
+    loadSettings();
     buildUi();
     scanPath(m_projectPath);
 }
@@ -61,10 +66,31 @@ void MainWindow::buildUi()
     m_pathEdit->setText(m_projectPath);
     auto *browseButton = new QPushButton(QStringLiteral("选择"), toolbar);
     m_scanButton = new QPushButton(QStringLiteral("扫描"), toolbar);
+    m_themeCombo = new QComboBox(toolbar);
+    m_themeCombo->addItem(QStringLiteral("跟随系统"), static_cast<int>(ThemeMode::System));
+    m_themeCombo->addItem(QStringLiteral("浅色模式"), static_cast<int>(ThemeMode::Light));
+    m_themeCombo->addItem(QStringLiteral("深色模式"), static_cast<int>(ThemeMode::Dark));
+    m_themeCombo->setCurrentIndex(m_themeCombo->findData(static_cast<int>(m_visualSettings.theme)));
+    m_schemeCombo = new QComboBox(toolbar);
+    m_schemeCombo->addItem(QStringLiteral("同级同色"), static_cast<int>(ColorScheme::SameHueByLevel));
+    m_schemeCombo->addItem(QStringLiteral("逐级不同色系"), static_cast<int>(ColorScheme::DifferentHueByLevel));
+    m_schemeCombo->setCurrentIndex(
+        m_schemeCombo->findData(static_cast<int>(m_visualSettings.colorScheme)));
+    m_fontSizeSpin = new QSpinBox(toolbar);
+    m_fontSizeSpin->setRange(9, 24);
+    m_fontSizeSpin->setSuffix(QStringLiteral(" pt"));
+    m_fontSizeSpin->setValue(m_visualSettings.fontSize);
+    m_fontSizeSpin->setToolTip(QStringLiteral("节点文字字号"));
+    m_paletteButton = new QPushButton(QStringLiteral("HSI 配色"), toolbar);
     toolbarLayout->addWidget(pathLabel);
     toolbarLayout->addWidget(m_pathEdit, 1);
     toolbarLayout->addWidget(browseButton);
     toolbarLayout->addWidget(m_scanButton);
+    toolbarLayout->addSpacing(4);
+    toolbarLayout->addWidget(m_themeCombo);
+    toolbarLayout->addWidget(m_schemeCombo);
+    toolbarLayout->addWidget(m_fontSizeSpin);
+    toolbarLayout->addWidget(m_paletteButton);
 
     m_view = new TreeMapView(this);
     m_details = new QLabel(this);
@@ -109,16 +135,104 @@ void MainWindow::buildUi()
     connect(m_view, &TreeMapView::nodeHovered, this, &MainWindow::showHover);
     connect(m_finderButton, &QPushButton::clicked, this, &MainWindow::openSelectedInFinder);
     connect(m_vscodeButton, &QPushButton::clicked, this, &MainWindow::openSelectedInVSCode);
+    connect(m_themeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_visualSettings.theme = static_cast<ThemeMode>(m_themeCombo->itemData(index).toInt());
+        saveSettings();
+        applyAppearance();
+    });
+    connect(m_schemeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_visualSettings.colorScheme = static_cast<ColorScheme>(m_schemeCombo->itemData(index).toInt());
+        saveSettings();
+        applyAppearance();
+    });
+    connect(m_fontSizeSpin, &QSpinBox::valueChanged, this, [this](int value) {
+        m_visualSettings.fontSize = value;
+        saveSettings();
+        applyAppearance();
+    });
+    connect(m_paletteButton, &QPushButton::clicked, this, &MainWindow::openPaletteDialog);
+    applyAppearance();
+}
 
+void MainWindow::loadSettings()
+{
+    QSettings settings;
+    m_visualSettings.theme = static_cast<ThemeMode>(
+        settings.value(QStringLiteral("appearance/theme"), static_cast<int>(ThemeMode::System)).toInt());
+    m_visualSettings.colorScheme = static_cast<ColorScheme>(
+        settings.value(QStringLiteral("appearance/colorScheme"),
+                       static_cast<int>(ColorScheme::DifferentHueByLevel)).toInt());
+    m_visualSettings.fontSize = settings.value(QStringLiteral("appearance/fontSize"), 11).toInt();
+    m_visualSettings.hue = settings.value(QStringLiteral("appearance/hue"), 212).toInt();
+    m_visualSettings.saturation = settings.value(QStringLiteral("appearance/saturation"), 46).toInt();
+    m_visualSettings.intensity = settings.value(QStringLiteral("appearance/intensity"), 84).toInt();
+    m_visualSettings.fontSize = qBound(9, m_visualSettings.fontSize, 24);
+    m_visualSettings.hue = (m_visualSettings.hue % 360 + 360) % 360;
+    m_visualSettings.saturation = qBound(10, m_visualSettings.saturation, 100);
+    m_visualSettings.intensity = qBound(35, m_visualSettings.intensity, 100);
+}
+
+void MainWindow::saveSettings() const
+{
+    QSettings settings;
+    settings.setValue(QStringLiteral("appearance/theme"), static_cast<int>(m_visualSettings.theme));
+    settings.setValue(QStringLiteral("appearance/colorScheme"),
+                      static_cast<int>(m_visualSettings.colorScheme));
+    settings.setValue(QStringLiteral("appearance/fontSize"), m_visualSettings.fontSize);
+    settings.setValue(QStringLiteral("appearance/hue"), m_visualSettings.hue);
+    settings.setValue(QStringLiteral("appearance/saturation"), m_visualSettings.saturation);
+    settings.setValue(QStringLiteral("appearance/intensity"), m_visualSettings.intensity);
+}
+
+bool MainWindow::effectiveDarkTheme() const
+{
+    if (m_visualSettings.theme == ThemeMode::Dark)
+        return true;
+    if (m_visualSettings.theme == ThemeMode::Light)
+        return false;
+    return QApplication::palette().color(QPalette::Window).lightness() < 128;
+}
+
+void MainWindow::applyAppearance()
+{
+    const bool dark = effectiveDarkTheme();
+    const QString background = dark ? QStringLiteral("#0f1726") : QStringLiteral("#f3f6fb");
+    const QString panel = dark ? QStringLiteral("#182235") : QStringLiteral("#ffffff");
+    const QString border = dark ? QStringLiteral("#34445d") : QStringLiteral("#c8d3e2");
+    const QString foreground = dark ? QStringLiteral("#edf4ff") : QStringLiteral("#18263c");
+    const QString secondary = dark ? QStringLiteral("#b9c7da") : QStringLiteral("#5e6f86");
+    const QString button = dark ? QStringLiteral("#243552") : QStringLiteral("#e6edf7");
+    const QString hover = dark ? QStringLiteral("#2f4770") : QStringLiteral("#d5e3f5");
     setStyleSheet(QStringLiteral(
-        "QMainWindow, QWidget { background: #0b1220; }"
-        "QLineEdit { background: #182235; border: 1px solid #34445d; border-radius: 6px; "
-        "padding: 6px 8px; color: #edf4ff; }"
-        "QPushButton { background: #243552; border: 1px solid #3b5274; border-radius: 6px; "
-        "padding: 7px 12px; color: #f4f7fb; }"
-        "QPushButton:hover { background: #2f4770; }"
-        "QPushButton:disabled { color: #65758e; background: #182235; }"
-        "QLabel { color: #b9c7da; }"));
+                      "QMainWindow, QWidget { background: %1; color: %2; font-size: %3pt; }"
+                      "QLineEdit, QComboBox, QSpinBox { background: %4; border: 1px solid %5; "
+                      "border-radius: 6px; padding: 6px 8px; color: %2; }"
+                      "QPushButton { background: %6; border: 1px solid %5; border-radius: 6px; "
+                      "padding: 7px 12px; color: %2; }"
+                      "QPushButton:hover, QComboBox:hover, QSpinBox:hover { background: %7; }"
+                      "QPushButton:disabled { color: %8; background: %4; }"
+                      "QLabel { color: %8; }"
+                      "QSplitter::handle { background: %5; }")
+                      .arg(background, foreground)
+                      .arg(m_visualSettings.fontSize)
+                      .arg(panel, border, button, hover, secondary));
+    m_view->setVisualSettings(m_visualSettings);
+    m_details->setStyleSheet(QStringLiteral("QLabel { padding: 16px; color: %1; }").arg(foreground));
+}
+
+void MainWindow::openPaletteDialog()
+{
+    HsiPaletteDialog dialog(m_visualSettings.hue,
+                            m_visualSettings.saturation,
+                            m_visualSettings.intensity,
+                            this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    m_visualSettings.hue = dialog.hue();
+    m_visualSettings.saturation = dialog.saturation();
+    m_visualSettings.intensity = dialog.intensity();
+    saveSettings();
+    applyAppearance();
 }
 
 void MainWindow::chooseProject()

@@ -17,10 +17,14 @@ qt_add_executable(ProgramViz MACOSX_BUNDLE
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h
+    src/hsipalettedialog.cpp
+    src/hsipalettedialog.h
     src/projectmodel.cpp
     src/projectmodel.h
     src/treemapview.cpp
     src/treemapview.h
+    src/visualsettings.cpp
+    src/visualsettings.h
 )
 
 target_link_libraries(ProgramViz PRIVATE
@@ -34,9 +38,12 @@ qt_add_executable(ProgramVizTests
     tests/projectmodel_test.cpp
     src/projectmodel.cpp
     src/projectmodel.h
+    src/visualsettings.cpp
+    src/visualsettings.h
 )
 target_link_libraries(ProgramVizTests PRIVATE
     Qt6::Core
+    Qt6::Gui
     Qt6::Test
 )
 add_test(NAME ProgramVizTests COMMAND ProgramVizTests)

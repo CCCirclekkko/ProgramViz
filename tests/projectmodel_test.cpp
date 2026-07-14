@@ -1,4 +1,5 @@
 #include "../src/projectmodel.h"
+#include "../src/visualsettings.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -13,6 +14,7 @@ private slots:
     void countsCodeAndComments();
     void scansCurrentProjectFixture();
     void aggregatesFolderTotals();
+    void convertsHsiPaletteToRgb();
 };
 
 void ProjectModelTest::countsCodeAndComments()
@@ -76,6 +78,20 @@ void ProjectModelTest::aggregatesFolderTotals()
     QCOMPARE(root->lines.code, 2);
     QCOMPARE(root->weight(), qint64(2));
     QVERIFY(root->sizeBytes > 0);
+}
+
+void ProjectModelTest::convertsHsiPaletteToRgb()
+{
+    const QColor red = colorFromHsi(0, 100, 33);
+    const QColor green = colorFromHsi(120, 100, 33);
+    const QColor blue = colorFromHsi(240, 100, 33);
+    QVERIFY(red.red() > red.green());
+    QVERIFY(green.green() > green.red());
+    QVERIFY(blue.blue() > blue.green());
+    const QColor neutral = colorFromHsi(0, 0, 50);
+    QCOMPARE(neutral.red(), 128);
+    QCOMPARE(neutral.green(), 128);
+    QCOMPARE(neutral.blue(), 128);
 }
 
 QTEST_MAIN(ProjectModelTest)
