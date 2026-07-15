@@ -1,5 +1,7 @@
 # ProgramViz
 
+[English](README_EN.md) | 中文
+
 [![CI](https://github.com/CCCirclekkko/ProgramViz/actions/workflows/ci.yml/badge.svg)](https://github.com/CCCirclekkko/ProgramViz/actions/workflows/ci.yml)
 
 当前版本：`v0.1.0`（macOS）
@@ -12,11 +14,9 @@ ProgramViz 是一个基于 Qt 6 的轻量工程代码结构可视化工具。它
 
 - 递归扫描工程目录，识别常见的 C/C++、Qt、Python、JavaScript/TypeScript、JSON、XML、Markdown 等源代码文件。
 - 按文件树展示工程结构，并汇总总行数、有效代码行数、空行、注释行和文件大小。
-- 支持节点悬停高亮、折叠/展开、详情查看、路径复制，以及在 Finder 或 VS Code 中打开。
-- 支持浅色、深色和跟随系统主题；可调整字号、HSI 配色、列间距、同级间距和节点最小高度。
-- 支持最近工程目录、Git 分支/历史版本、JPG 工程结构图和 Git 演进 GIF 导出。
-- GIF/JPG 导出支持可选的黑色日期标记、可保存的导出设置、自定义分辨率和 Git 历史阶段进度显示。
-- 时间标记支持秒、分、时、日、月、年六种颗粒度，并可通过 CLI 的 `--gif-time-granularity` 配置。
+- 支持节点悬停高亮、折叠/展开、详情查看，以及在 Finder 或 VS Code 中打开。
+- 支持浅色、深色和跟随系统主题，可调整字号、HSI 配色、间距和节点最小高度。
+- 支持最近工程目录、Git 分支与历史版本，以及 JPG 工程结构图和 Git 演进 GIF 导出。
 
 ## 安装与使用
 
@@ -30,9 +30,23 @@ cmake --build --preset debug
 open build/debug/ProgramViz.app
 ```
 
-启动后选择工程根目录，或直接把目录路径作为命令行参数传入。点击节点可查看详情；使用“适应窗口”和“展开所有名称”可以调整可视化布局。Git 工程可从“Git 分支”和“Git 历史”菜单切换数据版本；从“导出”菜单可以导出 JPG 或 Git 演进 GIF。导出 GIF 还需要系统中可执行的 `ffmpeg`。
+1. - 从 Releases 下载并打开应用，或执行上面的 CMake 命令构建后运行。
+2. - 点击“选择”，选择工程根目录；也可以在启动时传入目录路径。
+3. - 将鼠标悬停或点击节点查看详情；点击文件后可在 Finder 或 VS Code 中打开。
+4. - 使用“适应窗口”和“展开所有名称”调整布局，使用“外观”修改主题、字号和配色。
+5. - Git 工程可通过“Git 分支”和“Git 历史”切换分支或历史提交。
+6. - 从导出功能选择 JPG 或 Git 演进 GIF；GIF 导出前请安装并确保 `ffmpeg` 可执行。
+7. - 在 VS Code 中按 `⌘⇧P`，执行 `Shell Command: Install 'code' command in PATH`，然后重启 ProgramViz。
+8. - 在终端执行 `which code` 和 `code --version`，确认 VS Code 命令已加入 PATH。
 
 开发、调试、测试和命令行自动化说明见 [README_DEV.md](doc/README_DEV.md)，开发路线和待办事项见 [PROGRESS.md](doc/PROGRESS.md)。分支、版本、CI 和发布流程见 [WORKFLOW.md](doc/WORKFLOW.md)；发布前检查见 [RELEASE_CHECKLIST.md](doc/RELEASE_CHECKLIST.md) 和 [STABILITY_PORTABILITY_REVIEW.md](doc/STABILITY_PORTABILITY_REVIEW.md)；贡献代码请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## TODO
+
+- 完善上色方案和用户自定义配色的管理。
+- 增加 Windows/Linux 跨平台支持和平台相关的文件打开方式。
+- 添加语言支持。
+- 优化大型工程扫描、布局和 GIF 导出性能。
 
 ## 许可
 
