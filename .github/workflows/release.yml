@@ -54,12 +54,11 @@ jobs:
           ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@v4.3.1
         with:
           version: '6.8.3'
           arch: clang_64
           cache: true
-          modules: qtbase
 
       - name: Configure Release
         shell: bash
