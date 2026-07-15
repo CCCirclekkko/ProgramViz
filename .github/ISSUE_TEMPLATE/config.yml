@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题与讨论
+    url: https://github.com/OWNER/REPOSITORY/discussions
+    about: 发布仓库后请在 Discussions 中交流使用问题和方案。

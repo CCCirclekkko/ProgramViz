@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing vX.Y.Z tag to package'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate version
+    runs-on: macos-14
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Read tag
+        id: meta
+        shell: bash
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check CMake version
+        run: cmake -DTAG_VERSION="${{ steps.meta.outputs.version }}" -P scripts/check-version.cmake
+
+  package:
+    name: Package macOS
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: clang_64
+          cache: true
+          modules: qtbase
+
+      - name: Configure Release
+        shell: bash
+        run: >
+          cmake -S . -B build/release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/package
+
+      - name: Build
+        run: cmake --build build/release --parallel
+
+      - name: Install
+        run: cmake --install build/release
+
+      - name: Package macOS DMG
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          macdeployqt package/ProgramViz.app -dmg -always-overwrite
+          dmg="$(find package -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          mv "$dmg" "ProgramViz-$TAG-macos.dmg"
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProgramViz-macos
+          path: ProgramViz-*-macos.dmg
+          if-no-files-found: error
+
+  publish:
+    name: Create GitHub Release
+    needs:
+      - prepare
+      - package
+    runs-on: macos-14
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: ProgramViz-macos
+          path: artifacts
+
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ProgramViz ${{ needs.prepare.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          files: artifacts/*

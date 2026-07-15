@@ -1,6 +1,6 @@
 # ProgramViz 开发者说明
 
-本文档说明如何配置、构建、测试和调试 ProgramViz。项目当前优先支持 macOS；README 中的 VS Code 任务也按 macOS 环境配置。
+本文档说明如何配置、构建、测试和调试 ProgramViz。当前首个公开版本只发布 macOS 安装包；Windows/Linux 仅保留未来移植参考，不作为本阶段发布目标。
 
 ## 技术栈与目录
 
@@ -160,6 +160,9 @@ build/debug/ProgramViz.app/Contents/MacOS/ProgramViz /path/to/project
 | --gif-no-fit-height | 关闭 GIF 高度自适应。 |
 | --gif-expand-names | 提高节点最小高度，展开所有名称。 |
 | --gif-collapse-names | 使用当前外观设置的名称高度。 |
+| --gif-show-date | 在 GIF 帧中显示提交时间。 |
+| --gif-no-date | 隐藏 GIF 帧中的提交时间。 |
+| --gif-time-granularity VALUE | 时间颗粒度，可传 0～5，或 second/minute/hour/day/month/year；分别对应秒、分、时、日、月、年。 |
 
 示例：
 
@@ -212,6 +215,7 @@ export/resolution
 export/fitHeight
 export/expandNames
 export/showDate
+export/timeGranularity
 recentProjects
 ~~~
 
@@ -225,10 +229,17 @@ recentProjects
 4. 如果改变用户可见行为，同步更新根目录 [README.md](../README.md)；如果改变配置、调试或命令行行为，同步更新本文档。
 5. 将未完成项记录到 [PROGRESS.md](PROGRESS.md)，不要把计划中的功能写成已实现功能。
 
-## 已知限制
+分支、版本号、CI、Release 和 Pull Request 规则见 [WORKFLOW.md](WORKFLOW.md)。发布前稳定性和跨平台审阅见 [STABILITY_PORTABILITY_REVIEW.md](STABILITY_PORTABILITY_REVIEW.md)，检查清单见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
-- 当前工程以 macOS 为主要目标，Windows/Linux 尚未完成平台验证。
-- 扫描在 UI 线程执行，大型工程可能暂时阻塞界面；取消扫描和后台线程仍待实现。
+## 当前局限性
+
+- 当前发布目标只有 macOS；Windows/Linux 尚未完成验证、打包和用户体验适配。
+- 扫描和部分 Git 操作在 UI 线程中同步执行，大型工程或很长 Git 历史可能暂时阻塞界面；取消扫描和后台线程仍待实现。
 - 源文件扩展名和忽略目录使用编译期默认规则，尚未开放为用户配置。
-- GIF 导出依赖外部 ffmpeg，并且只适用于能读取到 Git 历史的工程。
-- 项目尚未提供安装包、签名配置或开源许可证。
+- 行数统计是轻量规则统计，不是完整语言解析器；复杂预处理、混合编码、特殊注释和异常编码可能产生近似结果。
+- 无法读取或无法识别编码的文件可能保留节点，但统计行数不完整。
+- GIF 导出依赖工程中的 Git 历史和用户环境中的 ffmpeg；大型历史会消耗较多内存、临时磁盘空间和生成时间。
+- UI 自动化、布局算法、大规模性能和外部程序联动测试覆盖有限。
+- CMake 本机 preset 默认使用 macOS Homebrew Qt 路径；跨平台开发需要使用对应平台的用户 preset 或直接传入 CMAKE_PREFIX_PATH。
+- VS Code 任务包含本机 macOS 工具路径，其他开发者应使用终端命令或修改本机设置。
+- 当前没有代码签名、macOS notarization、自动更新机制和正式开源许可证。

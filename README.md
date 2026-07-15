@@ -26,7 +26,7 @@ open build/debug/ProgramViz.app
 
 启动后选择工程根目录，或直接把目录路径作为命令行参数传入。点击节点可查看详情；使用“适应窗口”和“展开所有名称”可以调整可视化布局。Git 工程可从“Git 分支”和“Git 历史”菜单切换数据版本；从“导出”菜单可以导出 JPG 或 Git 演进 GIF。导出 GIF 还需要系统中可执行的 `ffmpeg`。
 
-开发、调试、测试和命令行自动化说明见 [README_DEV.md](doc/README_DEV.md)，开发路线和待办事项见 [PROGRESS.md](doc/PROGRESS.md)。
+开发、调试、测试和命令行自动化说明见 [README_DEV.md](doc/README_DEV.md)，开发路线和待办事项见 [PROGRESS.md](doc/PROGRESS.md)。分支、版本、CI 和发布流程见 [WORKFLOW.md](doc/WORKFLOW.md)；发布前检查见 [RELEASE_CHECKLIST.md](doc/RELEASE_CHECKLIST.md) 和 [STABILITY_PORTABILITY_REVIEW.md](doc/STABILITY_PORTABILITY_REVIEW.md)；贡献代码请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可
 
