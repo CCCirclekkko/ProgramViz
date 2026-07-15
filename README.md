@@ -30,14 +30,14 @@ cmake --build --preset debug
 open build/debug/ProgramViz.app
 ```
 
-1. - 从 Releases 下载并打开应用，或执行上面的 CMake 命令构建后运行。
-2. - 点击“选择”，选择工程根目录；也可以在启动时传入目录路径。
-3. - 将鼠标悬停或点击节点查看详情；点击文件后可在 Finder 或 VS Code 中打开。
-4. - 使用“适应窗口”和“展开所有名称”调整布局，使用“外观”修改主题、字号和配色。
-5. - Git 工程可通过“Git 分支”和“Git 历史”切换分支或历史提交。
-6. - 从导出功能选择 JPG 或 Git 演进 GIF；GIF 导出前请安装并确保 `ffmpeg` 可执行。
-7. - 在 VS Code 中按 `⌘⇧P`，执行 `Shell Command: Install 'code' command in PATH`，然后重启 ProgramViz。
-8. - 在终端执行 `which code` 和 `code --version`，确认 VS Code 命令已加入 PATH。
+- 从 Releases 下载并打开应用，或执行上面的 CMake 命令构建后运行。
+- 点击“选择”，选择工程根目录；也可以在启动时传入目录路径。
+- 将鼠标悬停或点击节点查看详情；点击文件后可在 Finder 或 VS Code 中打开。
+- 使用“适应窗口”和“展开所有名称”调整布局，使用“外观”修改主题、字号和配色。
+- Git 工程可通过“Git 分支”和“Git 历史”切换分支或历史提交。
+- 从导出功能选择 JPG 或 Git 演进 GIF；GIF 导出前请安装并确保 `ffmpeg` 可执行。
+- 在 VS Code 中按 `⌘⇧P`，执行 `Shell Command: Install 'code' command in PATH`，然后重启 ProgramViz。
+- 在终端执行 `which code` 和 `code --version`，确认 VS Code 命令已加入 PATH。
 
 开发、调试、测试和命令行自动化说明见 [README_DEV.md](doc/README_DEV.md)，开发路线和待办事项见 [PROGRESS.md](doc/PROGRESS.md)。分支、版本、CI 和发布流程见 [WORKFLOW.md](doc/WORKFLOW.md)；发布前检查见 [RELEASE_CHECKLIST.md](doc/RELEASE_CHECKLIST.md) 和 [STABILITY_PORTABILITY_REVIEW.md](doc/STABILITY_PORTABILITY_REVIEW.md)；贡献代码请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

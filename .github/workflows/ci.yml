@@ -9,6 +9,7 @@ on:
       - 'fix/**'
     paths-ignore:
       - 'README.md'
+      - 'README_EN.md'
       - 'doc/**'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
@@ -22,6 +23,7 @@ on:
       - 'release/**'
     paths-ignore:
       - 'README.md'
+      - 'README_EN.md'
       - 'doc/**'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'

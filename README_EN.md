@@ -28,14 +28,14 @@ cmake --build --preset debug
 open build/debug/ProgramViz.app
 ```
 
-1. - Open the app, or build and run it with the commands above.
-2. - Click “选择” (Select) and choose the project root, or pass the directory path at startup.
-3. - Hover over or click a node to view details; selected files can be opened in Finder or VS Code.
-4. - Use “适应窗口” (Fit Window) and “展开所有名称” (Expand Names) to adjust the layout; use “外观” (Appearance) for theme, font, and colors.
-5. - In a Git project, use “Git 分支” (Git Branch) and “Git 历史” (Git History) to switch revisions.
-6. - Export a JPG or Git evolution GIF. GIF export requires an executable `ffmpeg` installation.
-7. - In VS Code, press `⌘⇧P` and run `Shell Command: Install 'code' command in PATH`, then restart ProgramViz.
-8. - Run `which code` and `code --version` in a terminal to verify the VS Code command is on PATH.
+- Open the app, or build and run it with the commands above.
+- Click “选择” (Select) and choose the project root, or pass the directory path at startup.
+- Hover over or click a node to view details; selected files can be opened in Finder or VS Code.
+- Use “适应窗口” (Fit Window) and “展开所有名称” (Expand Names) to adjust the layout; use “外观” (Appearance) for theme, font, and colors.
+- In a Git project, use “Git 分支” (Git Branch) and “Git 历史” (Git History) to switch revisions.
+- Export a JPG or Git evolution GIF. GIF export requires an executable `ffmpeg` installation.
+- In VS Code, press `⌘⇧P` and run `Shell Command: Install 'code' command in PATH`, then restart ProgramViz.
+- Run `which code` and `code --version` in a terminal to verify the VS Code command is on PATH.
 
 Development, testing, and CLI automation details are in [README_DEV.md](doc/README_DEV.md). The roadmap is in [PROGRESS.md](doc/PROGRESS.md). See [WORKFLOW.md](doc/WORKFLOW.md) for branching, versioning, CI, and release processes.
 
