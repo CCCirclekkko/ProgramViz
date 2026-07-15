@@ -1,5 +1,9 @@
 # ProgramViz
 
+[![CI](https://github.com/CCCirclekkko/ProgramViz/actions/workflows/ci.yml/badge.svg)](https://github.com/CCCirclekkko/ProgramViz/actions/workflows/ci.yml)
+
+当前版本：`v0.1.0`（macOS）
+
 ProgramViz 是一个基于 Qt 6 的轻量工程代码结构可视化工具。它扫描用户选择的工程目录，将文件树、目录层级和有效代码行数汇总为从左到右展开的树状图，帮助快速定位工程中体量较大的模块和文件。对于 Git 工程，还可以查看分支与历史版本，并导出演进 GIF。
 
 ![ProgramViz Git 演进示例](gallery/ProgramViz-evolution.gif)
@@ -14,9 +18,11 @@ ProgramViz 是一个基于 Qt 6 的轻量工程代码结构可视化工具。它
 - GIF/JPG 导出支持可选的黑色日期标记、可保存的导出设置、自定义分辨率和 Git 历史阶段进度显示。
 - 时间标记支持秒、分、时、日、月、年六种颗粒度，并可通过 CLI 的 `--gif-time-granularity` 配置。
 
-## 使用方法
+## 安装与使用
 
-当前项目以源码方式运行，建议在 macOS 上使用 Qt 6.8 或更高版本、CMake 3.21 或更高版本和 Ninja：
+macOS 安装包可从 [Releases](https://github.com/CCCirclekkko/ProgramViz/releases) 获取。当前仅提供 macOS 版本，安装包已包含运行所需的 Qt 库。
+
+也可以从源码构建。建议使用 Qt 6.8 或更高版本、CMake 3.21 或更高版本和 Ninja：
 
 ```sh
 cmake --preset debug
@@ -30,4 +36,6 @@ open build/debug/ProgramViz.app
 
 ## 许可
 
-当前项目尚未确定开源许可证。正式发布前需要补充许可证文件及第三方依赖声明。
+ProgramViz 自身代码采用 [Apache License 2.0](LICENSE) 发布。
+
+ProgramViz 使用 Qt 6。发布包中的 Qt 组件按照其适用的开源许可证分发，相关版权和许可证信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。导出 Git 演进 GIF 时需要用户自行安装 `ffmpeg`；该工具不随 ProgramViz 安装包发布。
