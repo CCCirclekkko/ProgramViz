@@ -1,6 +1,8 @@
 #include "treemapview.h"
 
+#include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
@@ -70,6 +72,12 @@ void TreeMapView::setVisualSettings(const VisualSettings &settings)
     update();
 }
 
+void TreeMapView::setOverlayDate(const QString &date)
+{
+    m_overlayDate = date;
+    update();
+}
+
 void TreeMapView::setAdaptiveWindow(bool enabled)
 {
     if (m_adaptiveWindow == enabled)
@@ -84,10 +92,227 @@ bool TreeMapView::adaptiveWindow() const
     return m_adaptiveWindow;
 }
 
+TreeMapView::LayoutSnapshot TreeMapView::captureLayout(ProjectNode *root,
+                                                       const QSize &targetSize,
+                                                       const VisualSettings &settings,
+                                                       bool fitHeight,
+                                                       double fixedLineHeightScale) const
+{
+    TreeMapView renderer;
+    renderer.setFont(font());
+    renderer.m_settings = settings;
+    renderer.m_adaptiveWindow = fitHeight;
+    renderer.m_fixedLineHeightScale = fixedLineHeightScale > 0.0
+                                          ? fixedLineHeightScale
+                                          : m_fixedLineHeightScale;
+    renderer.m_lineHeightScale = renderer.m_fixedLineHeightScale;
+    renderer.resize(targetSize);
+    renderer.setRoot(root);
+    const QSize requiredSize(
+        std::max(targetSize.width(), static_cast<int>(std::ceil(renderer.m_contentWidth))),
+        std::max(targetSize.height(), static_cast<int>(std::ceil(renderer.m_contentHeight))));
+    renderer.resize(requiredSize);
+
+    LayoutSnapshot snapshot;
+    snapshot.root = root;
+    snapshot.size = renderer.size();
+    snapshot.items.reserve(renderer.m_items.size());
+    for (const LayoutItem &item : std::as_const(renderer.m_items))
+        snapshot.items.push_back({item, snapshotKey(root, item)});
+    return snapshot;
+}
+
+QString TreeMapView::snapshotKey(ProjectNode *root, const LayoutItem &item) const
+{
+    if (!root || !item.node)
+        return {};
+    if (item.members.isEmpty())
+        return QStringLiteral("node:%1").arg(QDir(root->path).relativeFilePath(item.node->path));
+
+    QStringList paths;
+    const QDir base(root->path);
+    for (ProjectNode *member : item.members)
+        paths.push_back(base.relativeFilePath(member->path));
+    paths.sort();
+    return QStringLiteral("group:%1").arg(paths.join(QStringLiteral("|")));
+}
+
+QRectF TreeMapView::scaledFromLeft(const QRectF &rect, double factor)
+{
+    return QRectF(rect.left(), rect.top(),
+                  rect.width() * std::clamp(factor, 0.0, 1.0), rect.height());
+}
+
+QImage TreeMapView::renderTransition(ProjectNode *fromRoot,
+                                     ProjectNode *toRoot,
+                                     double progress,
+                                     const QSize &targetSize) const
+{
+    return renderTransition(fromRoot, toRoot, progress, targetSize, m_settings,
+                            m_adaptiveWindow, m_fixedLineHeightScale);
+}
+
+QImage TreeMapView::renderTransition(ProjectNode *fromRoot,
+                                     ProjectNode *toRoot,
+                                     double progress,
+                                     const QSize &targetSize,
+                                     const VisualSettings &settings,
+                                     bool fitHeight,
+                                     double fixedLineHeightScale,
+                                     const QString &overlayDate) const
+{
+    if (!fromRoot && !toRoot)
+        return {};
+
+    const double clampedProgress = std::clamp(progress, 0.0, 1.0);
+    LayoutSnapshot before = captureLayout(fromRoot ? fromRoot : toRoot, targetSize,
+                                          settings, fitHeight, fixedLineHeightScale);
+    LayoutSnapshot after = captureLayout(toRoot ? toRoot : fromRoot, targetSize,
+                                         settings, fitHeight, fixedLineHeightScale);
+    const QSize canvas(std::max({targetSize.width(), before.size.width(), after.size.width()}),
+                       std::max({targetSize.height(), before.size.height(), after.size.height()}));
+    if (canvas != targetSize) {
+        before = captureLayout(fromRoot ? fromRoot : toRoot, canvas,
+                               settings, fitHeight, fixedLineHeightScale);
+        after = captureLayout(toRoot ? toRoot : fromRoot, canvas,
+                              settings, fitHeight, fixedLineHeightScale);
+    }
+
+    QHash<QString, int> beforeIndexes;
+    for (int index = 0; index < before.items.size(); ++index)
+        beforeIndexes.insert(before.items.at(index).key, index);
+    QHash<QString, int> afterIndexes;
+    for (int index = 0; index < after.items.size(); ++index)
+        afterIndexes.insert(after.items.at(index).key, index);
+
+    QVector<LayoutItem> blended;
+    blended.reserve(before.items.size() + after.items.size());
+    const double appearanceProgress = std::clamp(clampedProgress / 0.5, 0.0, 1.0);
+
+    for (const SnapshotItem &oldItem : std::as_const(before.items)) {
+        if (afterIndexes.contains(oldItem.key))
+            continue;
+        LayoutItem item = oldItem.item;
+        // Removed modules collapse toward their left edge. Keeping the left
+        // edge fixed avoids the old center-based jump.
+        item.rect = scaledFromLeft(item.rect, 1.0 - appearanceProgress);
+        blended.push_back(item);
+    }
+
+    for (const SnapshotItem &newItem : std::as_const(after.items)) {
+        const auto oldIndex = beforeIndexes.constFind(newItem.key);
+        if (oldIndex == beforeIndexes.cend()) {
+            LayoutItem item = newItem.item;
+            // New modules grow from their left edge while retaining the
+            // static layout's top and height.
+            item.rect = scaledFromLeft(item.rect, appearanceProgress);
+            blended.push_back(item);
+            continue;
+        }
+
+        const LayoutItem &oldItem = before.items.at(oldIndex.value()).item;
+        LayoutItem item = newItem.item;
+        item.rect = QRectF(oldItem.rect.left() + (newItem.item.rect.left() - oldItem.rect.left()) * clampedProgress,
+                           oldItem.rect.top() + (newItem.item.rect.top() - oldItem.rect.top()) * clampedProgress,
+                           oldItem.rect.width() + (newItem.item.rect.width() - oldItem.rect.width()) * clampedProgress,
+                           oldItem.rect.height() + (newItem.item.rect.height() - oldItem.rect.height()) * clampedProgress);
+        item.displayCodeLines = qRound(oldItem.displayCodeLines
+                                       + (newItem.item.displayCodeLines - oldItem.displayCodeLines)
+                                             * clampedProgress);
+        blended.push_back(item);
+    }
+
+    TreeMapView renderer;
+    renderer.setFont(font());
+    renderer.m_settings = settings;
+    renderer.m_adaptiveWindow = fitHeight;
+    renderer.m_overlayDate = overlayDate;
+    QFont renderFont = renderer.font();
+    renderFont.setPointSize(settings.fontSize);
+    renderer.m_textHeight = QFontMetrics(renderFont).height();
+    renderer.m_root = after.root ? after.root : before.root;
+    renderer.resize(canvas);
+    renderer.m_contentWidth = canvas.width();
+    renderer.m_contentHeight = canvas.height();
+    // resizeEvent() rebuilds the normal static layout. Assign the blended
+    // items after resizing so the temporary interpolated geometry is what is
+    // actually rendered.
+    renderer.m_items = blended;
+
+    QImage image(canvas, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    renderer.renderScene(painter);
+    return image;
+}
+
+double TreeMapView::lineHeightScaleForRoots(const QVector<ProjectNode *> &roots,
+                                            const QSize &targetSize,
+                                            const VisualSettings &settings) const
+{
+    if (roots.isEmpty())
+        return m_fixedLineHeightScale;
+
+    const double targetHeight = std::max(360, targetSize.height());
+    const auto maxContentHeightAt = [this, &roots, &targetSize, &settings](double scale) {
+        double maximum = 0.0;
+        for (ProjectNode *root : roots) {
+            TreeMapView renderer;
+            renderer.setFont(font());
+            renderer.m_settings = settings;
+            renderer.m_adaptiveWindow = false;
+            renderer.m_fixedLineHeightScale = scale;
+            renderer.m_lineHeightScale = scale;
+            renderer.resize(targetSize);
+            renderer.setRoot(root);
+            maximum = std::max(maximum, renderer.m_contentHeight);
+        }
+        return maximum;
+    };
+
+    if (maxContentHeightAt(0.0) > targetHeight)
+        return 0.0;
+
+    double low = 0.0;
+    double high = std::max(m_fixedLineHeightScale, 0.2);
+    while (maxContentHeightAt(high) <= targetHeight && high < 16.0)
+        high *= 2.0;
+    for (int iteration = 0; iteration < 28; ++iteration) {
+        const double middle = (low + high) / 2.0;
+        if (maxContentHeightAt(middle) <= targetHeight)
+            low = middle;
+        else
+            high = middle;
+    }
+    return low;
+}
+
+double TreeMapView::contentWidthForRoots(const QVector<ProjectNode *> &roots,
+                                         const QSize &targetSize,
+                                         const VisualSettings &settings) const
+{
+    double maximum = 480.0;
+    for (ProjectNode *root : roots) {
+        TreeMapView renderer;
+        renderer.setFont(font());
+        renderer.m_settings = settings;
+        renderer.m_adaptiveWindow = false;
+        renderer.resize(targetSize);
+        renderer.setRoot(root);
+        maximum = std::max(maximum, renderer.m_contentWidth);
+    }
+    return maximum;
+}
+
 void TreeMapView::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    renderScene(painter);
+}
+
+void TreeMapView::renderScene(QPainter &painter)
+{
     painter.fillRect(rect(), isDarkTheme() ? QColor(QStringLiteral("#111827"))
                                            : QColor(QStringLiteral("#f3f6fb")));
 
@@ -166,6 +391,15 @@ void TreeMapView::paintEvent(QPaintEvent *)
 
         if (nodeRect.width() >= 58.0 && nodeRect.height() >= m_textHeight)
             drawText(painter, item, nodeRect);
+    }
+
+    if (!m_overlayDate.isEmpty()) {
+        QFont dateFont = painter.font();
+        dateFont.setPointSize(m_settings.fontSize);
+        painter.setFont(dateFont);
+        painter.setPen(Qt::black);
+        painter.drawText(rect().adjusted(8, 8, -8, -8),
+                         Qt::AlignRight | Qt::AlignBottom, m_overlayDate);
     }
 }
 

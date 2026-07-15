@@ -5,6 +5,7 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -44,6 +45,8 @@ HsiPaletteDialog::HsiPaletteDialog(int hue, int saturation, int intensity, QWidg
     form->addRow(QStringLiteral("强度 I"), m_intensity);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(m_hue, &QSpinBox::valueChanged, this, &HsiPaletteDialog::updatePreview);

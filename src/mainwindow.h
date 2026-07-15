@@ -24,6 +24,16 @@ public:
     explicit MainWindow(const QString &initialPath, QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    bool exportGitEvolutionGifFile(const QString &outputPath, int fps = 10,
+                                   double transitionDuration = 0.5,
+                                   double pauseDuration = 0.5,
+                                   const QString &resolution = QStringLiteral("current"),
+                                   bool fitHeight = false,
+                                   bool expandNames = false,
+                                   bool showDate = true,
+                                   int timeGranularity = 3);
+    void openGifExportDialogForScreenshot();
+
 private slots:
     void chooseProject();
     void rescanProject();
@@ -38,6 +48,8 @@ private slots:
     void handleAdaptiveFitUnavailable(int requiredHeight);
     void selectGitBranch(const QString &branch);
     void selectGitRevision(const QString &revision);
+    void exportCurrentJpeg();
+    void exportGitEvolutionGif();
     void applyAppearance();
     void updateRecentMenu();
 
@@ -53,6 +65,9 @@ private:
     void refreshGitMetadata(const QString &path);
     void updateGitMenus();
     bool materializeGitRevision(const QString &revision, QString *snapshotPath);
+    bool materializeGitRevisionTo(const QString &revision, const QString &snapshotPath) const;
+    QSize resolveGifResolution(const QString &specification) const;
+    QString formatExportDateTime(const QDateTime &dateTime, int granularity) const;
     QString formatBytes(qint64 bytes) const;
     QString formatDate(const QDateTime &dateTime) const;
     ProjectNode *selectedNode() const;
@@ -67,12 +82,14 @@ private:
     QPushButton *m_gitHistoryButton = nullptr;
     QMenu *m_gitBranchMenu = nullptr;
     QMenu *m_gitHistoryMenu = nullptr;
+    QMenu *m_exportMenu = nullptr;
     QLabel *m_details = nullptr;
     QPushButton *m_finderButton = nullptr;
     QPushButton *m_vscodeButton = nullptr;
     QPushButton *m_nameExpansionButton = nullptr;
     QPushButton *m_appearanceButton = nullptr;
     QPushButton *m_adaptiveButton = nullptr;
+    QPushButton *m_exportButton = nullptr;
     TreeMapView *m_view = nullptr;
     ProjectNode *m_selected = nullptr;
     VisualSettings m_visualSettings;
@@ -87,4 +104,13 @@ private:
     QString m_gitBranch;
     QString m_gitRevision;
     std::unique_ptr<QTemporaryDir> m_gitSnapshot;
+    QString m_cliExportGifPath;
+    int m_cliExportGifFps = 10;
+    double m_cliExportGifTransitionDuration = 0.5;
+    double m_cliExportGifPauseDuration = 0.5;
+    QString m_cliExportGifResolution = QStringLiteral("current");
+    bool m_cliExportGifFitHeight = false;
+    bool m_cliExportGifExpandNames = false;
+    bool m_cliExportGifShowDate = true;
+    int m_cliExportTimeGranularity = 3;
 };

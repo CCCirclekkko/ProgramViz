@@ -5,11 +5,18 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDate>
 #include <QDateTime>
+#include <QDialogButtonBox>
 #include <QDir>
-#include <QGuiApplication>
 #include <QFileDialog>
+#include <QFormLayout>
+#include <QGuiApplication>
 #include <QFileInfo>
+#include <QGroupBox>
+#include <QIntValidator>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -17,22 +24,45 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QProgressDialog>
+#include <QRegularExpression>
 #include <QScreen>
 #include <QScrollArea>
 #include <QSettings>
+#include <QSlider>
+#include <QStandardPaths>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QToolButton>
+#include <QDialog>
+#include <QAbstractItemView>
 #include <QUrl>
 #include <QVBoxLayout>
 
 #include <QDesktopServices>
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace {
+
+class BelowComboBox final : public QComboBox {
+public:
+    using QComboBox::QComboBox;
+
+protected:
+    void showPopup() override
+    {
+        QComboBox::showPopup();
+        if (QWidget *popup = view()->window()) {
+            popup->setFixedWidth(width());
+            popup->move(mapToGlobal(QPoint(0, height())));
+        }
+    }
+};
 
 QString kindName(ProjectNodeKind kind)
 {
@@ -97,6 +127,11 @@ void MainWindow::buildUi()
     m_pathEdit->setText(m_projectPath);
     auto *browseButton = new QPushButton(QStringLiteral("选择"), toolbar);
     m_scanButton = new QPushButton(QStringLiteral("刷新"), toolbar);
+    m_exportMenu = new QMenu(this);
+    m_exportMenu->addAction(QStringLiteral("导出 JPG"), this, &MainWindow::exportCurrentJpeg);
+    m_exportMenu->addAction(QStringLiteral("导出演进 GIF"), this, &MainWindow::exportGitEvolutionGif);
+    m_exportButton = new QPushButton(QStringLiteral("导出"), toolbar);
+    m_exportButton->setMenu(m_exportMenu);
     m_recentMenu = new QMenu(this);
     m_recentButton = new QToolButton(toolbar);
     m_recentButton->setArrowType(Qt::DownArrow);
@@ -124,6 +159,7 @@ void MainWindow::buildUi()
     toolbarLayout->addWidget(m_gitHistoryButton);
     toolbarLayout->addWidget(browseButton);
     toolbarLayout->addWidget(m_scanButton);
+    toolbarLayout->addWidget(m_exportButton);
     toolbarLayout->addSpacing(4);
     toolbarLayout->addWidget(m_nameExpansionButton);
     toolbarLayout->addWidget(m_adaptiveButton);
@@ -219,6 +255,19 @@ void MainWindow::loadSettings()
     m_visualSettings.cornerRatio = std::clamp(m_visualSettings.cornerRatio, 0.05, 0.30);
     m_visualSettings.columnGap = qBound(0, m_visualSettings.columnGap, 30);
     m_visualSettings.siblingGap = qBound(0, m_visualSettings.siblingGap, 20);
+    m_cliExportGifFps = settings.value(QStringLiteral("export/fps"), 10).toInt();
+    m_cliExportGifTransitionDuration = settings.value(QStringLiteral("export/transitionDuration"), 0.5).toDouble();
+    m_cliExportGifPauseDuration = settings.value(QStringLiteral("export/pauseDuration"), 0.5).toDouble();
+    m_cliExportGifResolution = settings.value(QStringLiteral("export/resolution"),
+                                               QStringLiteral("custom:自适应x最大高度")).toString();
+    m_cliExportGifFitHeight = settings.value(QStringLiteral("export/fitHeight"), false).toBool();
+    m_cliExportGifExpandNames = settings.value(QStringLiteral("export/expandNames"), false).toBool();
+    m_cliExportGifShowDate = settings.value(QStringLiteral("export/showDate"), true).toBool();
+    m_cliExportTimeGranularity = settings.value(QStringLiteral("export/timeGranularity"), 3).toInt();
+    m_cliExportGifFps = std::clamp(m_cliExportGifFps, 1, 30);
+    m_cliExportGifTransitionDuration = std::clamp(m_cliExportGifTransitionDuration, 0.0, 5.0);
+    m_cliExportGifPauseDuration = std::clamp(m_cliExportGifPauseDuration, 0.0, 5.0);
+    m_cliExportTimeGranularity = std::clamp(m_cliExportTimeGranularity, 0, 5);
     m_recentProjects = settings.value(QStringLiteral("recentProjects")).toStringList();
     m_recentProjects.erase(std::remove_if(m_recentProjects.begin(), m_recentProjects.end(),
                                           [](const QString &path) { return !QDir(path).exists(); }),
@@ -240,6 +289,14 @@ void MainWindow::saveSettings() const
     settings.setValue(QStringLiteral("appearance/columnGap"), m_visualSettings.columnGap);
     settings.setValue(QStringLiteral("appearance/siblingGap"), m_visualSettings.siblingGap);
     settings.setValue(QStringLiteral("appearance/livePreview"), m_visualSettings.livePreview);
+    settings.setValue(QStringLiteral("export/fps"), m_cliExportGifFps);
+    settings.setValue(QStringLiteral("export/transitionDuration"), m_cliExportGifTransitionDuration);
+    settings.setValue(QStringLiteral("export/pauseDuration"), m_cliExportGifPauseDuration);
+    settings.setValue(QStringLiteral("export/resolution"), m_cliExportGifResolution);
+    settings.setValue(QStringLiteral("export/fitHeight"), m_cliExportGifFitHeight);
+    settings.setValue(QStringLiteral("export/expandNames"), m_cliExportGifExpandNames);
+    settings.setValue(QStringLiteral("export/showDate"), m_cliExportGifShowDate);
+    settings.setValue(QStringLiteral("export/timeGranularity"), m_cliExportTimeGranularity);
 }
 
 bool MainWindow::effectiveDarkTheme() const
@@ -270,10 +327,12 @@ void MainWindow::applyAppearance()
                       "QPushButton:hover, QComboBox:hover, QSpinBox:hover { background: %7; }"
                       "QPushButton:disabled { color: %8; background: %4; }"
                       "QLabel { color: %8; }"
+                      "QLabel:disabled, QComboBox:disabled { color: %9; }"
                       "QSplitter::handle { background: %5; }")
                       .arg(background, foreground)
                       .arg(m_visualSettings.fontSize)
-                      .arg(panel, border, button, hover, secondary));
+                      .arg(panel, border, button, hover, secondary,
+                           dark ? QStringLiteral("#68768c") : QStringLiteral("#a8b3c2")));
     m_view->setVisualSettings(m_visualSettings);
     const QString activeButtonStyle = QStringLiteral(
         "QPushButton { background: #d9f0df; color: #356043; border-color: #a8cfb1; }");
@@ -407,6 +466,557 @@ void MainWindow::rescanProject()
     scanPath(m_pathEdit->text().trimmed());
 }
 
+void MainWindow::exportCurrentJpeg()
+{
+    if (!m_project || !m_view)
+        return;
+
+    const QString defaultName = QDir(m_projectPath).filePath(
+        QFileInfo(m_projectPath).fileName() + QStringLiteral(".jpg"));
+    const QString outputPath = QFileDialog::getSaveFileName(
+        this, QStringLiteral("导出工程结构 JPG"), defaultName,
+        QStringLiteral("JPEG 图片 (*.jpg *.jpeg)"));
+    if (outputPath.isEmpty())
+        return;
+
+    m_view->setOverlayDate(m_cliExportGifShowDate
+                               ? formatExportDateTime(QDateTime::currentDateTime(),
+                                                      m_cliExportTimeGranularity)
+                               : QString());
+    const bool saved = m_view->grab().save(outputPath, "JPG", 95);
+    m_view->setOverlayDate({});
+    statusBar()->showMessage(saved ? QStringLiteral("JPG 已导出：%1").arg(outputPath)
+                                   : QStringLiteral("JPG 导出失败：%1").arg(outputPath));
+}
+
+void MainWindow::exportGitEvolutionGif()
+{
+    if (m_gitRoot.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("当前工程不是 Git 工程，无法生成演进 GIF"));
+        return;
+    }
+
+    const bool automated = !m_cliExportGifPath.isEmpty();
+    QString outputPath = m_cliExportGifPath;
+    int fps = m_cliExportGifFps;
+    double transitionDuration = m_cliExportGifTransitionDuration;
+    double pauseDuration = m_cliExportGifPauseDuration;
+    QString resolutionSpec = m_cliExportGifResolution;
+    bool fitHeight = m_cliExportGifFitHeight;
+    bool expandNames = m_cliExportGifExpandNames;
+    bool showDate = m_cliExportGifShowDate;
+    int timeGranularity = m_cliExportTimeGranularity;
+    if (!automated) {
+        QDialog options(this);
+        options.setWindowTitle(QStringLiteral("项目历史Gif导出"));
+        auto *fpsCombo = new QComboBox(&options);
+        for (const int optionFps : {1, 2, 3, 4, 5, 10, 20, 30})
+            fpsCombo->addItem(QStringLiteral("%1 FPS").arg(optionFps), optionFps);
+        fpsCombo->setCurrentIndex(fpsCombo->findData(m_cliExportGifFps));
+
+        auto *advancedBox = new QGroupBox(QStringLiteral("导出设置"), &options);
+        auto *advancedLayout = new QVBoxLayout(advancedBox);
+        auto *form = new QFormLayout;
+        advancedLayout->addLayout(form);
+        auto *resolutionCombo = new QComboBox(advancedBox);
+        resolutionCombo->addItem(QStringLiteral("当前窗口"), QStringLiteral("current"));
+        resolutionCombo->addItem(QStringLiteral("全屏"), QStringLiteral("fullscreen"));
+        resolutionCombo->addItem(QStringLiteral("自定义"), QStringLiteral("custom"));
+        resolutionCombo->setMinimumWidth(
+            QFontMetrics(resolutionCombo->font()).horizontalAdvance(QStringLiteral("当前窗口"))
+            + 32);
+        resolutionCombo->setEditable(false);
+
+        auto *customResolution = new QWidget(advancedBox);
+        auto *customResolutionLayout = new QHBoxLayout(customResolution);
+        customResolutionLayout->setContentsMargins(0, 0, 0, 0);
+        auto *customWidth = new QComboBox(customResolution);
+        auto *customHeight = new QComboBox(customResolution);
+        customWidth->setEditable(true);
+        customHeight->setEditable(true);
+        customWidth->lineEdit()->setValidator(new QIntValidator(1, std::numeric_limits<int>::max(),
+                                                                 customWidth));
+        customHeight->lineEdit()->setValidator(new QIntValidator(1, std::numeric_limits<int>::max(),
+                                                                  customHeight));
+        customWidth->addItem(QStringLiteral("自适应"));
+        customWidth->addItem(QStringLiteral("当前宽度"));
+        customWidth->addItem(QStringLiteral("最大宽度"));
+        customHeight->addItem(QStringLiteral("当前高度"));
+        customHeight->addItem(QStringLiteral("最大高度"));
+        customWidth->setMinimumWidth(
+            QFontMetrics(customWidth->font()).horizontalAdvance(QStringLiteral("当前宽度"))
+            + 28);
+        customHeight->setMinimumWidth(
+            QFontMetrics(customHeight->font()).horizontalAdvance(QStringLiteral("当前高度"))
+            + 28);
+        customWidth->setFixedWidth(customWidth->minimumWidth());
+        customHeight->setFixedWidth(customHeight->minimumWidth());
+        customWidth->setEditText(QStringLiteral("自适应"));
+        customHeight->setEditText(QStringLiteral("最大高度"));
+        const QString savedResolution = m_cliExportGifResolution;
+        if (savedResolution == QStringLiteral("current")) {
+            resolutionCombo->setCurrentIndex(0);
+        } else if (savedResolution == QStringLiteral("fullscreen")) {
+            resolutionCombo->setCurrentIndex(1);
+        } else {
+            resolutionCombo->setCurrentIndex(2);
+            const QString customSpec = savedResolution.startsWith(QStringLiteral("custom:"))
+                                           ? savedResolution.mid(7)
+                                           : savedResolution;
+            const QStringList dimensions = customSpec.split(QChar('x'));
+            if (dimensions.size() == 2) {
+                customWidth->setEditText(dimensions.at(0));
+                customHeight->setEditText(dimensions.at(1));
+            }
+        }
+        customResolutionLayout->addWidget(customWidth);
+        customResolutionLayout->addWidget(new QLabel(QStringLiteral("×"), customResolution));
+        customResolutionLayout->addWidget(customHeight);
+        customResolution->setVisible(false);
+        connect(resolutionCombo, &QComboBox::currentIndexChanged, &options,
+                [resolutionCombo, customResolution](int) {
+                    customResolution->setVisible(
+                        resolutionCombo->currentData().toString() == QStringLiteral("custom"));
+                });
+        customResolution->setVisible(
+            resolutionCombo->currentData().toString() == QStringLiteral("custom"));
+        auto *fitHeightCheck = new QCheckBox(QStringLiteral("自适应窗口高度"), advancedBox);
+        auto *expandNamesCheck = new QCheckBox(QStringLiteral("展开所有内容名称"), advancedBox);
+        auto *showDateCheck = new QCheckBox(QStringLiteral("显示时间"), advancedBox);
+        auto *timeGranularityLabel = new QLabel(QStringLiteral("时间颗粒度"), advancedBox);
+        auto *timeGranularityCombo = new BelowComboBox(advancedBox);
+        timeGranularityCombo->addItem(QStringLiteral("秒"), 0);
+        timeGranularityCombo->addItem(QStringLiteral("分"), 1);
+        timeGranularityCombo->addItem(QStringLiteral("时"), 2);
+        timeGranularityCombo->addItem(QStringLiteral("日"), 3);
+        timeGranularityCombo->addItem(QStringLiteral("月"), 4);
+        timeGranularityCombo->addItem(QStringLiteral("年"), 5);
+        timeGranularityCombo->setCurrentIndex(timeGranularityCombo->findData(m_cliExportTimeGranularity));
+        timeGranularityCombo->setFixedWidth(customWidth->width());
+        timeGranularityCombo->setMaxVisibleItems(6);
+        // Keep the selected-item marker and the combo arrow on the same side
+        // as the popup options, so the option text stays aligned.
+        timeGranularityCombo->setLayoutDirection(Qt::RightToLeft);
+        auto *timeExample = new QLabel(advancedBox);
+        const QStringList timeExamples = {
+            QStringLiteral("2026-10-24, 08:03:12"), QStringLiteral("2026-10-24, 08:03"),
+            QStringLiteral("2026-10-24, 08"), QStringLiteral("2026-10-24"),
+            QStringLiteral("2026-10"), QStringLiteral("2026")};
+        const auto updateTimeControls = [=]() {
+            const int index = timeGranularityCombo->currentData().toInt();
+            timeExample->setText(timeExamples.value(index));
+            const bool enabled = showDateCheck->isChecked();
+            timeGranularityLabel->setEnabled(enabled);
+            timeGranularityCombo->setEnabled(enabled);
+            timeExample->setEnabled(enabled);
+        };
+        connect(showDateCheck, &QCheckBox::toggled, &options, updateTimeControls);
+        connect(timeGranularityCombo, &QComboBox::currentIndexChanged, &options,
+                updateTimeControls);
+        updateTimeControls();
+        fitHeightCheck->setChecked(m_cliExportGifFitHeight);
+        expandNamesCheck->setChecked(m_cliExportGifExpandNames);
+        showDateCheck->setChecked(m_cliExportGifShowDate);
+        auto *transitionSlider = new QSlider(Qt::Horizontal, advancedBox);
+        auto *pauseSlider = new QSlider(Qt::Horizontal, advancedBox);
+        transitionSlider->setRange(0, 50);
+        pauseSlider->setRange(0, 50);
+        transitionSlider->setValue(qRound(m_cliExportGifTransitionDuration * 10.0));
+        pauseSlider->setValue(qRound(m_cliExportGifPauseDuration * 10.0));
+        transitionSlider->setTickInterval(5);
+        pauseSlider->setTickInterval(5);
+        auto *transitionValue = new QLabel(advancedBox);
+        auto *pauseValue = new QLabel(advancedBox);
+        auto *totalValue = new QLabel(advancedBox);
+        const auto updateDurationLabels = [=]() {
+            const double transition = transitionSlider->value() / 10.0;
+            const double pause = pauseSlider->value() / 10.0;
+            transitionValue->setText(QStringLiteral("%1 秒").arg(transition, 0, 'f', 1));
+            pauseValue->setText(QStringLiteral("%1 秒").arg(pause, 0, 'f', 1));
+            totalValue->setText(QStringLiteral("%1 秒 * 版本")
+                                    .arg(transition + pause, 0, 'f', 1));
+        };
+        connect(transitionSlider, &QSlider::valueChanged, &options, updateDurationLabels);
+        connect(pauseSlider, &QSlider::valueChanged, &options, updateDurationLabels);
+        updateDurationLabels();
+        auto *transitionRow = new QWidget(advancedBox);
+        auto *transitionLayout = new QHBoxLayout(transitionRow);
+        transitionLayout->setContentsMargins(0, 0, 0, 0);
+        transitionLayout->addWidget(transitionSlider);
+        transitionLayout->addWidget(transitionValue);
+        auto *pauseRow = new QWidget(advancedBox);
+        auto *pauseLayout = new QHBoxLayout(pauseRow);
+        pauseLayout->setContentsMargins(0, 0, 0, 0);
+        pauseLayout->addWidget(pauseSlider);
+        pauseLayout->addWidget(pauseValue);
+        form->addRow(QStringLiteral("帧率"), fpsCombo);
+        auto *resolutionRow = new QWidget(advancedBox);
+        auto *resolutionRowLayout = new QHBoxLayout(resolutionRow);
+        resolutionRowLayout->setContentsMargins(0, 0, 0, 0);
+        resolutionRowLayout->addWidget(resolutionCombo);
+        resolutionRowLayout->addWidget(customResolution, 1);
+        form->addRow(QStringLiteral("窗口分辨率"), resolutionRow);
+        form->addRow(QStringLiteral("过渡动画"), transitionRow);
+        form->addRow(QStringLiteral("版本停顿"), pauseRow);
+        form->addRow(QStringLiteral("总时长"), totalValue);
+        auto *timeRow = new QWidget(advancedBox);
+        auto *timeLayout = new QHBoxLayout(timeRow);
+        timeLayout->setContentsMargins(0, 0, 0, 0);
+        timeLayout->addWidget(showDateCheck);
+        timeLayout->addWidget(timeGranularityLabel);
+        timeLayout->addWidget(timeGranularityCombo);
+        timeLayout->addWidget(timeExample);
+        timeLayout->addStretch(1);
+        auto *checksLayout = new QVBoxLayout;
+        checksLayout->setContentsMargins(0, 0, 0, 0);
+        const auto checkRow = [advancedBox](QCheckBox *check) {
+            auto *row = new QWidget(advancedBox);
+            auto *layout = new QHBoxLayout(row);
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->addWidget(check);
+            layout->addStretch(1);
+            return row;
+        };
+        checksLayout->addWidget(checkRow(fitHeightCheck), 0, Qt::AlignLeft);
+        checksLayout->addWidget(checkRow(expandNamesCheck), 0, Qt::AlignLeft);
+        checksLayout->addWidget(timeRow, 0, Qt::AlignLeft);
+        advancedLayout->addLayout(checksLayout);
+
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &options);
+        buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
+        buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
+        connect(buttons, &QDialogButtonBox::accepted, &options, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &options, &QDialog::reject);
+        auto *dialogLayout = new QVBoxLayout(&options);
+        dialogLayout->addWidget(advancedBox);
+        dialogLayout->addWidget(buttons);
+        if (options.exec() != QDialog::Accepted)
+            return;
+
+    const QString defaultName = QDir(m_projectPath).filePath(
+        QFileInfo(m_projectPath).fileName() + QStringLiteral("-evolution.gif"));
+    outputPath = QFileDialog::getSaveFileName(
+        this, QStringLiteral("导出 Git 项目演进 GIF"), defaultName,
+        QStringLiteral("GIF 动图 (*.gif)"));
+    if (outputPath.isEmpty())
+        return;
+
+        fps = fpsCombo->currentData().toInt();
+        transitionDuration = transitionSlider->value() / 10.0;
+        pauseDuration = pauseSlider->value() / 10.0;
+        if (resolutionCombo->currentData().toString() == QStringLiteral("custom")) {
+            const QScreen *screen = QGuiApplication::screenAt(frameGeometry().center());
+            if (!screen)
+                screen = QGuiApplication::primaryScreen();
+            const QRect available = screen ? screen->availableGeometry() : QRect();
+            const auto dimensionText = [this, &available](const QString &text) {
+                if (text == QStringLiteral("自适应"))
+                    return QStringLiteral("自适应");
+                if (text == QStringLiteral("当前宽度"))
+                    return QString::number(m_view->width());
+                if (text == QStringLiteral("当前高度"))
+                    return QString::number(m_view->height());
+                if (text == QStringLiteral("最大宽度"))
+                    return QString::number(available.width());
+                if (text == QStringLiteral("最大高度"))
+                    return QString::number(available.height());
+                return text;
+            };
+            resolutionSpec = QStringLiteral("custom:%1x%2")
+                                 .arg(dimensionText(customWidth->currentText().trimmed()),
+                                      dimensionText(customHeight->currentText().trimmed()));
+        } else {
+            resolutionSpec = resolutionCombo->currentData().toString();
+        }
+        fitHeight = fitHeightCheck->isChecked();
+        expandNames = expandNamesCheck->isChecked();
+        showDate = showDateCheck->isChecked();
+        timeGranularity = timeGranularityCombo->currentData().toInt();
+        m_cliExportGifFps = fps;
+        m_cliExportGifTransitionDuration = transitionDuration;
+        m_cliExportGifPauseDuration = pauseDuration;
+        m_cliExportGifResolution = resolutionSpec;
+        m_cliExportGifFitHeight = fitHeight;
+        m_cliExportGifExpandNames = expandNames;
+        m_cliExportGifShowDate = showDate;
+        m_cliExportTimeGranularity = timeGranularity;
+        saveSettings();
+    }
+    if (outputPath.isEmpty())
+        return;
+    const QString historyRef = m_gitBranch.isEmpty() ? QStringLiteral("HEAD") : m_gitBranch;
+    const QStringList revisions = gitOutput({QStringLiteral("rev-list"),
+                                              QStringLiteral("--reverse"), historyRef})
+                                      .split(QChar('\n'), Qt::SkipEmptyParts);
+    if (revisions.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("没有可用的 Git 历史版本"));
+        return;
+    }
+    QVector<QDateTime> revisionDates;
+    revisionDates.reserve(revisions.size());
+    for (const QString &revision : revisions) {
+        const QString dateText = gitOutput({QStringLiteral("show"), QStringLiteral("-s"),
+                                            QStringLiteral("--format=%ad"),
+                                            QStringLiteral("--date=format-local:%Y-%m-%d %H:%M:%S"),
+                                            revision});
+        QDateTime date = QDateTime::fromString(dateText,
+                                               QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        revisionDates.push_back(date);
+    }
+
+    QTemporaryDir snapshots(QStringLiteral("ProgramViz-history-XXXXXX"));
+    QTemporaryDir frames(QStringLiteral("ProgramViz-frames-XXXXXX"));
+    if (!snapshots.isValid() || !frames.isValid()) {
+        statusBar()->showMessage(QStringLiteral("无法创建 GIF 临时目录"));
+        return;
+    }
+
+    std::vector<std::unique_ptr<ProjectNode>> roots;
+    roots.reserve(revisions.size());
+    constexpr int stageCount = 3;
+    QProgressDialog progress(this);
+    progress.setWindowTitle(QStringLiteral("导出 Git 项目演进 GIF"));
+    progress.setCancelButtonText(QStringLiteral("取消"));
+    progress.setWindowModality(Qt::ApplicationModal);
+    progress.setMinimumDuration(0);
+    const auto updateStage = [&progress](int stage, const QString &name, int value, int maximum) {
+        progress.setRange(0, std::max(1, maximum));
+        progress.setValue(value);
+        progress.setLabelText(QStringLiteral("%1/%2 %3  %4/%5")
+                                  .arg(stage)
+                                  .arg(stageCount)
+                                  .arg(name)
+                                  .arg(std::min(value, maximum))
+                                  .arg(maximum));
+        QApplication::processEvents();
+    };
+    for (int index = 0; index < revisions.size(); ++index) {
+        updateStage(1, QStringLiteral("读取 Git 历史记录"), index, revisions.size());
+        if (progress.wasCanceled())
+            return;
+        const QString snapshotPath = QDir(snapshots.path()).filePath(QStringLiteral("r%1").arg(index));
+        if (!materializeGitRevisionTo(revisions.at(index), snapshotPath)) {
+            statusBar()->showMessage(QStringLiteral("无法读取 Git 历史，GIF 生成已取消"));
+            return;
+        }
+        auto root = ProjectScanner::scan(snapshotPath);
+        if (!root) {
+            statusBar()->showMessage(QStringLiteral("无法扫描 Git 历史快照，GIF 生成已取消"));
+            return;
+        }
+        root->name = QFileInfo(m_projectPath).fileName();
+        roots.push_back(std::move(root));
+    }
+    updateStage(1, QStringLiteral("读取 Git 历史记录"), revisions.size(), revisions.size());
+
+    const QSize targetSize = resolveGifResolution(resolutionSpec);
+    if (!targetSize.isValid()) {
+        statusBar()->showMessage(QStringLiteral("无法识别 GIF 分辨率：%1").arg(resolutionSpec));
+        return;
+    }
+    VisualSettings exportSettings = m_visualSettings;
+    exportSettings.minHeightRatio = expandNames ? 1.5 : m_userMinHeightRatio;
+    QVector<ProjectNode *> exportRoots;
+    exportRoots.reserve(static_cast<int>(roots.size()));
+    for (const auto &root : roots)
+        exportRoots.push_back(root.get());
+    // Width adaptation is always enabled. The requested width is a minimum;
+    // the widest historical layout is used when it needs more room.
+    const int adaptiveWidth = static_cast<int>(std::ceil(
+        m_view->contentWidthForRoots(exportRoots, targetSize, exportSettings)));
+    const QSize renderSize(std::max(targetSize.width(), adaptiveWidth), targetSize.height());
+    const double fixedScale = fitHeight
+                                  ? 0.0
+                                  : m_view->lineHeightScaleForRoots(exportRoots, renderSize,
+                                                                    exportSettings);
+    const double versionDuration = transitionDuration + pauseDuration;
+    const int framesPerVersion = std::max(1, qRound(versionDuration * fps));
+    const int transitionFrames = fps == 1
+                                     ? 0
+                                     : qRound(transitionDuration * fps);
+    const int totalFrames = framesPerVersion * static_cast<int>(roots.size());
+    const auto dateForFrame = [this, &revisionDates, showDate, timeGranularity](int version,
+                                                                                  double progress) {
+        if (!showDate)
+            return QString();
+        if (revisionDates.isEmpty())
+            return QString();
+        const QDateTime toDate = revisionDates.at(
+            std::min(version, static_cast<int>(revisionDates.size()) - 1));
+        if (version <= 0 || progress >= 1.0 || !toDate.isValid())
+            return toDate.isValid() ? formatExportDateTime(toDate, timeGranularity) : QString();
+        const QDateTime fromDate = revisionDates.at(version - 1);
+        if (!fromDate.isValid())
+            return formatExportDateTime(toDate, timeGranularity);
+        const qint64 fromMs = fromDate.toMSecsSinceEpoch();
+        const qint64 toMs = toDate.toMSecsSinceEpoch();
+        const qint64 interpolatedMs = fromMs + qRound64((toMs - fromMs) * progress);
+        return formatExportDateTime(
+            QDateTime::fromMSecsSinceEpoch(interpolatedMs, QTimeZone::systemTimeZone()),
+            timeGranularity);
+    };
+    int frameIndex = 0;
+    for (int version = 0; version < roots.size(); ++version) {
+        for (int frame = 0; frame < framesPerVersion; ++frame) {
+            updateStage(2, QStringLiteral("生成动画帧"), frameIndex, totalFrames);
+            if (progress.wasCanceled())
+                return;
+
+            QImage image;
+            if (version == 0 || transitionFrames == 0 || frame >= transitionFrames) {
+                image = m_view->renderTransition(roots.at(version).get(),
+                                                  roots.at(version).get(), 1.0, renderSize,
+                                                  exportSettings, fitHeight, fixedScale,
+                                                  dateForFrame(version, 1.0));
+            } else {
+                const double transitionProgress = (frame + 1.0) / transitionFrames;
+                image = m_view->renderTransition(roots.at(version - 1).get(),
+                                                  roots.at(version).get(),
+                                                  transitionProgress, renderSize,
+                                                  exportSettings, fitHeight, fixedScale,
+                                                  dateForFrame(version, transitionProgress));
+            }
+            const QString framePath = QDir(frames.path()).filePath(
+                QStringLiteral("frame_%1.png").arg(frameIndex, 6, 10, QChar('0')));
+            if (!image.save(framePath, "PNG")) {
+                statusBar()->showMessage(QStringLiteral("动画帧写入失败，GIF 生成已取消"));
+                return;
+            }
+            ++frameIndex;
+        }
+    }
+    updateStage(2, QStringLiteral("生成动画帧"), totalFrames, totalFrames);
+
+    QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (ffmpeg.isEmpty()) {
+        for (const QString &candidate : {QStringLiteral("/opt/homebrew/bin/ffmpeg"),
+                                         QStringLiteral("/usr/local/bin/ffmpeg")}) {
+            if (QFileInfo::exists(candidate)) {
+                ffmpeg = candidate;
+                break;
+            }
+        }
+    }
+    if (ffmpeg.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("未找到 ffmpeg，无法生成 GIF"));
+        return;
+    }
+
+    const QString framePattern = QDir(frames.path()).filePath(QStringLiteral("frame_%06d.png"));
+    QProcess encoder;
+    progress.setRange(0, 1);
+    progress.setValue(0);
+    progress.setLabelText(QStringLiteral("3/%1 编码 GIF  0/1").arg(stageCount));
+    QApplication::processEvents();
+    if (progress.wasCanceled())
+        return;
+    encoder.start(ffmpeg, {QStringLiteral("-y"), QStringLiteral("-framerate"), QString::number(fps),
+                           QStringLiteral("-i"), framePattern, QStringLiteral("-vf"),
+                           QStringLiteral("split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=sierra2_4a"),
+                           QStringLiteral("-loop"), QStringLiteral("0"), outputPath});
+    if (!encoder.waitForFinished(120000) || encoder.exitStatus() != QProcess::NormalExit
+        || encoder.exitCode() != 0) {
+        statusBar()->showMessage(QStringLiteral("GIF 编码失败：%1")
+                                     .arg(QString::fromLocal8Bit(encoder.readAllStandardError()).trimmed()));
+        return;
+    }
+    progress.setValue(1);
+    progress.setLabelText(QStringLiteral("3/%1 编码 GIF  1/1").arg(stageCount));
+    statusBar()->showMessage(QStringLiteral("Git 演进 GIF 已导出：%1").arg(outputPath));
+}
+
+bool MainWindow::exportGitEvolutionGifFile(const QString &outputPath, int fps,
+                                           double transitionDuration,
+                                           double pauseDuration,
+                                           const QString &resolution,
+                                           bool fitHeight,
+                                           bool expandNames,
+                                           bool showDate,
+                                           int timeGranularity)
+{
+    m_cliExportGifPath = outputPath;
+    m_cliExportGifFps = fps;
+    m_cliExportGifTransitionDuration = transitionDuration;
+    m_cliExportGifPauseDuration = pauseDuration;
+    m_cliExportGifResolution = resolution;
+    m_cliExportGifFitHeight = fitHeight;
+    m_cliExportGifExpandNames = expandNames;
+    m_cliExportGifShowDate = showDate;
+    m_cliExportTimeGranularity = std::clamp(timeGranularity, 0, 5);
+    exportGitEvolutionGif();
+    m_cliExportGifPath.clear();
+    return QFileInfo::exists(outputPath) && QFileInfo(outputPath).size() > 0;
+}
+
+void MainWindow::openGifExportDialogForScreenshot()
+{
+    exportGitEvolutionGif();
+}
+
+QString MainWindow::formatExportDateTime(const QDateTime &dateTime, int granularity) const
+{
+    if (!dateTime.isValid())
+        return {};
+    static const QStringList formats = {
+        QStringLiteral("yyyy-MM-dd, HH:mm:ss"), QStringLiteral("yyyy-MM-dd, HH:mm"),
+        QStringLiteral("yyyy-MM-dd, HH"), QStringLiteral("yyyy-MM-dd"),
+        QStringLiteral("yyyy-MM"), QStringLiteral("yyyy")};
+    return dateTime.toLocalTime().toString(formats.value(std::clamp(granularity, 0, 5)));
+}
+
+QSize MainWindow::resolveGifResolution(const QString &specification) const
+{
+    const QString spec = specification.trimmed().toLower();
+    const QScreen *screen = QGuiApplication::screenAt(frameGeometry().center());
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return {};
+
+    const QRect available = screen->availableGeometry();
+    const QRect full = screen->geometry();
+    if (spec.isEmpty() || spec == QStringLiteral("current") || spec == QStringLiteral("window")
+        || spec == QStringLiteral("当前窗口"))
+        return QSize(480, m_view->size().height()).expandedTo(QSize(480, 360));
+    if (spec == QStringLiteral("fullscreen") || spec == QStringLiteral("full-screen")
+        || spec == QStringLiteral("全屏"))
+        return full.size();
+    if (spec == QStringLiteral("max-height") || spec == QStringLiteral("最大高度"))
+        return QSize(480, available.height());
+    if (spec == QStringLiteral("max-width") || spec == QStringLiteral("最大宽度"))
+        return QSize(available.width(), m_view->size().height()).expandedTo(QSize(480, 360));
+
+    QString customSpec = spec;
+    if (customSpec.startsWith(QStringLiteral("custom:")))
+        customSpec = customSpec.mid(7);
+    const QStringList dimensions = customSpec.split(QRegularExpression(QStringLiteral("[x×, ]")),
+                                                    Qt::SkipEmptyParts);
+    if (dimensions.size() != 2)
+        return {};
+    bool widthOk = false;
+    bool heightOk = false;
+    const auto dimensionValue = [this, &available](const QString &value) {
+        if (value == QStringLiteral("自适应"))
+            return 480;
+        if (value == QStringLiteral("当前宽度"))
+            return m_view->width();
+        if (value == QStringLiteral("当前高度"))
+            return m_view->height();
+        if (value == QStringLiteral("最大宽度"))
+            return available.width();
+        if (value == QStringLiteral("最大高度"))
+            return available.height();
+        return value.toInt();
+    };
+    const int width = dimensionValue(dimensions.at(0));
+    const int height = dimensionValue(dimensions.at(1));
+    widthOk = width > 0;
+    heightOk = height > 0;
+    if (!widthOk || !heightOk || width <= 0 || height <= 0)
+        return {};
+    return QSize(width, height);
+}
+
 QString MainWindow::gitOutput(const QStringList &arguments) const
 {
     if (m_gitRoot.isEmpty())
@@ -538,13 +1148,28 @@ bool MainWindow::materializeGitRevision(const QString &revision, QString *snapsh
         m_gitSnapshot.reset();
         return false;
     }
+    if (!materializeGitRevisionTo(revision, m_gitSnapshot->path())) {
+        m_gitSnapshot.reset();
+        return false;
+    }
+    *snapshotPath = m_gitSnapshot->path();
+    return true;
+}
+
+bool MainWindow::materializeGitRevisionTo(const QString &revision,
+                                           const QString &snapshotPath) const
+{
+    if (m_gitRoot.isEmpty() || revision.isEmpty() || snapshotPath.isEmpty())
+        return false;
+
+    if (!QDir().mkpath(snapshotPath))
+        return false;
     QProcess list;
     list.setWorkingDirectory(m_gitRoot);
     list.start(QStringLiteral("git"), {QStringLiteral("ls-tree"), QStringLiteral("-r"),
                                         QStringLiteral("-z"), QStringLiteral("--name-only"), revision});
     if (!list.waitForFinished(30000) || list.exitStatus() != QProcess::NormalExit
         || list.exitCode() != 0) {
-        m_gitSnapshot.reset();
         return false;
     }
 
@@ -560,7 +1185,6 @@ bool MainWindow::materializeGitRevision(const QString &revision, QString *snapsh
     batch.setWorkingDirectory(m_gitRoot);
     batch.start(QStringLiteral("git"), {QStringLiteral("cat-file"), QStringLiteral("--batch")});
     if (!batch.waitForStarted(5000)) {
-        m_gitSnapshot.reset();
         return false;
     }
 
@@ -569,7 +1193,6 @@ bool MainWindow::materializeGitRevision(const QString &revision, QString *snapsh
     batch.closeWriteChannel();
     if (!batch.waitForFinished(30000) || batch.exitStatus() != QProcess::NormalExit
         || batch.exitCode() != 0) {
-        m_gitSnapshot.reset();
         return false;
     }
 
@@ -595,14 +1218,13 @@ bool MainWindow::materializeGitRevision(const QString &revision, QString *snapsh
         if (type != "blob")
             continue;
 
-        const QString absoluteFilePath = QDir(m_gitSnapshot->path()).filePath(path);
+        const QString absoluteFilePath = QDir(snapshotPath).filePath(path);
         if (!QDir().mkpath(QFileInfo(absoluteFilePath).path()))
             continue;
         QFile file(absoluteFilePath);
         if (file.open(QIODevice::WriteOnly))
             file.write(contents);
     }
-    *snapshotPath = m_gitSnapshot->path();
     return true;
 }
 

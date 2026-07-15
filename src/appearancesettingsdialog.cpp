@@ -84,6 +84,8 @@ AppearanceSettingsDialog::AppearanceSettingsDialog(const VisualSettings &initial
     form->addRow(QStringLiteral("同级间距"), sliderRow(m_siblingGapSlider, &m_siblingGapValue, this));
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
