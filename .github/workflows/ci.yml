@@ -7,10 +7,28 @@ on:
       - 'release/**'
       - 'feature/**'
       - 'fix/**'
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE'
+      - 'THIRD_PARTY_NOTICES.md'
+      - 'gallery/**'
   pull_request:
     branches:
       - main
       - 'release/**'
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'LICENSE'
+      - 'THIRD_PARTY_NOTICES.md'
+      - 'gallery/**'
 
 permissions:
   contents: read
